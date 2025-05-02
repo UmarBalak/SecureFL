@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 0 0% 0%;
+  --foreground: 142 76% 56%;
+
+  --card: 0 0% 0%;
+  --card-foreground: 142 76% 56%;
+
+  --popover: 0 0% 0%;
+  --popover-foreground: 142 76% 56%;
+
+  --primary: 142 76% 56%;
+  --primary-foreground: 0 0% 0%;
+
+  --secondary: 142 30% 20%;
+  --secondary-foreground: 142 76% 56%;
+
+  --muted: 142 30% 20%;
+  --muted-foreground: 142 50% 40%;
+
+  --accent: 142 30% 20%;
+  --accent-foreground: 142 76% 56%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --border: 142 30% 20%;
+  --input: 142 30% 20%;
+  --ring: 142 76% 56%;
+
+  --radius: 0.5rem;
+
+  --chart-1: 142 76% 56%;
+  --chart-2: 39 100% 50%;
+  --chart-3: 262 83% 58%;
+  --chart-4: 0 84% 60%;
+  --chart-5: 199 89% 48%;
+}
+
+body {
+  background-color: black;
+  color: hsl(var(--foreground));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Terminal blinking cursor */
+.cursor::after {
+  content: "|";
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  from,
+  to {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(34, 197, 94, 0.3);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 197, 94, 0.5);
+}
