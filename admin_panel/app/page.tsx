@@ -31,7 +31,7 @@ export default function Dashboard() {
 
     loadData()
     // Set up polling every 30 seconds for real-time updates
-    const interval = setInterval(loadData, 30000)
+    const interval = setInterval(loadData, 60000)
     return () => clearInterval(interval)
   }, [])
 

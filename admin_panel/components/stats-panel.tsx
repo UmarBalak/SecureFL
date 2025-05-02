@@ -133,8 +133,8 @@ export function StatsPanel({ clients, models, lastAggregation }: StatsPanelProps
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: "#0f172a",
-                  border: "1px solid #22c55e",
+                  backgroundColor: "#22c55e",
+                  border: "2px solid #ffffff",
                   borderRadius: "4px",
                   color: "#4ade80",
                 }}
@@ -145,8 +145,8 @@ export function StatsPanel({ clients, models, lastAggregation }: StatsPanelProps
         </div>
 
         <div className="flex justify-center gap-4 mt-2">
-          <Badge className="bg-green-700 hover:bg-green-600">Contributing: {contributingClients}</Badge>
-          <Badge className="bg-gray-700 hover:bg-gray-600">Non-contributing: {nonContributingClients}</Badge>
+          <Badge className="bg-green-600 hover:bg-green-500">Contributing: {contributingClients}</Badge>
+          <Badge className="bg-gray-500 hover:bg-gray-400">Non-contributing: {nonContributingClients}</Badge>
         </div>
       </div>
     </div>

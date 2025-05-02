@@ -19,7 +19,7 @@ export function TerminalCommand({ onCommand }: TerminalCommandProps) {
 
   return (
     <div className="flex items-center gap-2 border border-green-500/30 rounded-md p-2 bg-black">
-      <span className="text-amber-500">root@enspint:~$</span>
+      <span className="text-amber-500">root@harry:~$</span>
       <input
         type="text"
         value={command}
