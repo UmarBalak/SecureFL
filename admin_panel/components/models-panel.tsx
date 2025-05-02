@@ -124,7 +124,7 @@ export function ModelsPanel({ models, clients }: ModelsPanelProps) {
             <div className="text-xs p-2 border border-green-500/30 rounded bg-black">
               <div className="font-bold mb-1 text-green-400">Contributing Clients:</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                {model.client_ids.split(",").map((clientId) => (
+                {Array.from(new Set(model.client_ids.split(","))).map((clientId) => (
                   <div key={clientId} className="flex items-center gap-1">
                     <span className="h-2 w-2 rounded-full bg-green-500"></span>
                     <span className="text-amber-400">{getClientName(clientId)}</span>
