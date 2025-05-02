@@ -6,8 +6,8 @@ import "./globals.css"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Federated Learning Dashboard",
-  description: "Terminal-style dashboard for federated learning system monitoring",
+  title: "SecureFL Dashboard",
+  description: "Dashboard for federated learning system monitoring",
 }
 
 export default function RootLayout({
