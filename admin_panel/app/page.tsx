@@ -62,8 +62,8 @@ export default function Dashboard() {
     <div className="min-h-screen bg-black text-green-500 p-4 font-mono">
       <header className="mb-6 border-b border-green-500/30 pb-2">
         <h1 className="text-2xl font-bold">
-          <span className="text-amber-500">root@enspint</span>:
-          <span className="text-blue-400">~/federated-learning</span>$ ./dashboard
+          <span className="text-amber-500">root@harry</span>:
+          <span className="text-blue-400">~/securefl</span>$ ./dashboard
         </h1>
         <p className="text-xs text-green-400">
           Last updated: {new Date().toLocaleString()} | Last system check:{" "}
