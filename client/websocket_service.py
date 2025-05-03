@@ -8,7 +8,7 @@ from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
 
 # Load environment variables
-env_file = ".env.public"  # Change this to .env or .env.2 as needed
+env_file = ".env.client"  # Change this to .env or .env.2 as needed
 load_dotenv(env_file)
 
 # Azure Blob Storage configuration

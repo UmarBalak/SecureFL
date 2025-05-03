@@ -3,7 +3,7 @@ import os
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
-# from model import IoTModel
+from model import IoTModel
 
 class IoTModelTrainer:
     def __init__(self, random_state=42):
@@ -24,8 +24,29 @@ class IoTModelTrainer:
         np.random.seed(self.random_state)
         tf.random.set_seed(self.random_state)
 
+    def create_model(self, input_dim, num_classes, architecture=None):
+        """
+        Create a new MLP model
+
+        Parameters:
+        -----------
+        input_dim : int
+            Number of input features
+        num_classes : int
+            Number of output classes
+        architecture : list of int, optional
+            List specifying the number of units in each hidden layer
+
+        Returns:
+        --------
+        model : tf.keras.models.Sequential
+            Compiled MLP model
+        """
+        self.model = self.model_builder.create_mlp_model(input_dim, num_classes, architecture)
+        return self.model
+
     def train_model(self, X_train, y_train_cat, X_test, y_test_cat,
-                   epochs=50, batch_size=64, architecture=None, verbose=1):
+                   model, epochs=50, batch_size=64, verbose=2,):
         """
         Train the MLP model with early stopping
 
@@ -56,11 +77,9 @@ class IoTModelTrainer:
             Time taken for training in seconds
         """
         print("\nTraining MLP model...")
-        input_dim = X_train.shape[1]
-        num_classes = y_train_cat.shape[1]
 
         # Create model
-        self.model = self.model_builder.create_mlp_model(input_dim, num_classes, architecture)
+        self.model = model
 
         # Callbacks
         early_stopping = EarlyStopping(
@@ -70,7 +89,7 @@ class IoTModelTrainer:
         )
 
         model_checkpoint = ModelCheckpoint(
-            filepath='models/best_mlp_model.keras',
+            filepath='models/best_mlp_model.h5',
             monitor='val_loss',
             save_best_only=True
         )
@@ -90,12 +109,12 @@ class IoTModelTrainer:
         print(f"Model training completed in {training_time:.2f} seconds")
 
         # Save model
-        self.model.save('models/mlp_model.keras')
-        print("Model saved to 'models/mlp_model.keras'")
+        self.model.save('models/model.h5')
+        print("Model saved to 'models/model.h5'")
 
         # Save weights separately for federated learning
-        self.model.save_weights('federated_models/mlp_weights.weights.h5')
-        print("Model weights saved to 'federated_models/mlp_weights.weights.h5'")
+        self.model.save_weights('federated_models/weights.h5')
+        print("Model weights saved to 'federated_models/weights.h5'")
 
         return self.history, training_time
 

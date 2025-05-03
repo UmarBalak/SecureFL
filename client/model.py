@@ -10,48 +10,25 @@ class IoTModel:
 
     def create_mlp_model(self, input_dim, num_classes, architecture=None):
         if architecture is None:
-            architecture = [128, 64]
+            architecture = [128, 64, 32]
 
         model = Sequential()
-        model.add(Dense(architecture[0], input_dim=input_dim, kernel_regularizer=l2(0.001)))
-        model.add(LeakyReLU(alpha=0.01))
+        model.add(Dense(architecture[0], input_dim=input_dim, activation="relu", kernel_regularizer=l2(0.001)))
         model.add(BatchNormalization())
 
         for units in architecture[1:]:
-            model.add(Dense(units, kernel_regularizer=l2(0.001)))
-            model.add(LeakyReLU(alpha=0.01))
+            model.add(Dense(units, activation="relu", kernel_regularizer=l2(0.001)))
             model.add(BatchNormalization())
 
         model.add(Dense(num_classes, activation='softmax'))
 
         model.compile(
             loss='categorical_crossentropy',
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
             metrics=['accuracy']
         )
 
         return model
-
-    def create_lightweight_model(self, input_dim, num_classes):
-        model = Sequential()
-        model.add(Dense(128, input_dim=input_dim))
-        model.add(LeakyReLU(alpha=0.01))
-        model.add(BatchNormalization())
-
-        model.add(Dense(64))
-        model.add(LeakyReLU(alpha=0.01))
-        model.add(BatchNormalization())
-
-        model.add(Dense(num_classes, activation='softmax'))
-
-        model.compile(
-            loss='categorical_crossentropy',
-            optimizer=tf.keras.optimizers.Adam(learning_rate=0.0001),
-            metrics=['accuracy']
-        )
-
-        return model
-
 
     def load_model(self, model_path):
         """

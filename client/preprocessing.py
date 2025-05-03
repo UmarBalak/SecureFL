@@ -36,7 +36,7 @@ class IoTDataPreprocessor:
         try:
             df = pd.read_csv(file_path)
             print(f"Dataset loaded successfully with {df.shape[0]} rows and {df.shape[1]} columns")
-
+            print(f"Columns in dataset: {df.columns.tolist()}")
             # Map attack types to numerical labels
             df['label'] = df['Attack_type'].map(self.attack_type_map)
 
@@ -69,6 +69,53 @@ class IoTDataPreprocessor:
             print(f"Error loading data: {e}")
             raise
 
+    def add_advanced_features(self, X):
+        """Engineer additional features for improved model performance"""
+        print("Engineering advanced features...")
+
+        # Time-based features
+        if 'udp.time_delta' in X.columns:
+            X['udp_time_stats'] = X['udp.time_delta'].rolling(window=5, min_periods=1).std()
+            X['udp_time_mean'] = X['udp.time_delta'].rolling(window=5, min_periods=1).mean()
+            X['udp_time_max'] = X['udp.time_delta'].rolling(window=5, min_periods=1).max()
+
+            # Additional advanced features
+            X['udp_time_entropy'] = X['udp.time_delta'].rolling(window=10, min_periods=1).apply(
+                lambda x: -np.sum(np.square(x/x.sum()) * np.log(x/x.sum() + 1e-10))
+            )
+
+        # DNS features
+        if 'dns.qry.name.len' in X.columns:
+            X['dns_name_length_ratio'] = X['dns.qry.name.len'] / (X['dns.qry.name.len'].mean() + 1)
+            X['dns_length_normalized'] = X['dns.qry.name.len'] / X['dns.qry.name.len'].max()
+
+            # Detect anomalous DNS query lengths (potential data exfiltration)
+            X['dns_anomaly_score'] = np.abs(X['dns.qry.name.len'] - X['dns.qry.name.len'].mean()) / X['dns.qry.name.len'].std()
+
+        # MQTT features
+        if 'mqtt.msg' in X.columns:
+            X['mqtt.msg'] = X['mqtt.msg'].fillna('').astype(str)
+            X['mqtt_msg_density'] = X['mqtt.msg'].apply(len) / (X['mqtt.msg'].str.len().mean() + 1)
+
+            # Extract numeric-only features from mqtt fields
+            if 'mqtt.len' in X.columns:
+                X['mqtt_len_normalized'] = X['mqtt.len'] / (X['mqtt.len'].max() + 1)
+
+        # TCP connection features
+        tcp_columns = [col for col in X.columns if col.startswith('tcp')]
+        if len(tcp_columns) > 0:
+            if 'tcp.flags' in X.columns and 'tcp.srcport' in X.columns:
+                X['tcp_port_flag_ratio'] = X['tcp.flags'] / (X['tcp.srcport'] + 1)
+
+            # Count TCP features that are non-zero (as proxy for connection complexity)
+            X['tcp_feature_count'] = X[tcp_columns].fillna(0).astype(bool).sum(axis=1)
+
+        # Fill remaining missing values
+        X = X.fillna(0)
+
+        print(f"Added {X.shape[1]} features after engineering")
+        return X
+
     def preprocess_data(self, X, y, max_samples=None, test_size=0.2):
         """Preprocess the data with advanced feature engineering and handling missing values"""
         print("\nPreprocessing data...")
@@ -86,10 +133,6 @@ class IoTDataPreprocessor:
         self.imputer = SimpleImputer(strategy='mean')
         X = pd.DataFrame(self.imputer.fit_transform(X), columns=X.columns)
 
-        # # Remove any remaining NaN rows
-        # mask = ~X.isna().any(axis=1)
-        # X = X[mask]
-        # y = y[mask]
         # Remove any remaining NaN rows and align the indices of X and y
         mask = ~X.isna().any(axis=1)
         X = X[mask].reset_index(drop=True)  # Reset index for X
@@ -149,49 +192,4 @@ class IoTDataPreprocessor:
         return (X_train_balanced, X_test_scaled, y_train_balanced, y_test,
                 y_train_categorical, y_test_categorical, preprocessing_stats)
 
-    def add_advanced_features(self, X):
-        """Engineer additional features for improved model performance"""
-        print("Engineering advanced features...")
-
-        # Time-based features
-        if 'udp.time_delta' in X.columns:
-            X['udp_time_stats'] = X['udp.time_delta'].rolling(window=5, min_periods=1).std()
-            X['udp_time_mean'] = X['udp.time_delta'].rolling(window=5, min_periods=1).mean()
-            X['udp_time_max'] = X['udp.time_delta'].rolling(window=5, min_periods=1).max()
-
-            # Additional advanced features
-            X['udp_time_entropy'] = X['udp.time_delta'].rolling(window=10, min_periods=1).apply(
-                lambda x: -np.sum(np.square(x/x.sum()) * np.log(x/x.sum() + 1e-10))
-            )
-
-        # DNS features
-        if 'dns.qry.name.len' in X.columns:
-            X['dns_name_length_ratio'] = X['dns.qry.name.len'] / (X['dns.qry.name.len'].mean() + 1)
-            X['dns_length_normalized'] = X['dns.qry.name.len'] / X['dns.qry.name.len'].max()
-
-            # Detect anomalous DNS query lengths (potential data exfiltration)
-            X['dns_anomaly_score'] = np.abs(X['dns.qry.name.len'] - X['dns.qry.name.len'].mean()) / X['dns.qry.name.len'].std()
-
-        # MQTT features
-        if 'mqtt.msg' in X.columns:
-            X['mqtt.msg'] = X['mqtt.msg'].fillna('').astype(str)
-            X['mqtt_msg_density'] = X['mqtt.msg'].apply(len) / (X['mqtt.msg'].str.len().mean() + 1)
-
-            # Extract numeric-only features from mqtt fields
-            if 'mqtt.len' in X.columns:
-                X['mqtt_len_normalized'] = X['mqtt.len'] / (X['mqtt.len'].max() + 1)
-
-        # TCP connection features
-        tcp_columns = [col for col in X.columns if col.startswith('tcp')]
-        if len(tcp_columns) > 0:
-            if 'tcp.flags' in X.columns and 'tcp.srcport' in X.columns:
-                X['tcp_port_flag_ratio'] = X['tcp.flags'] / (X['tcp.srcport'] + 1)
-
-            # Count TCP features that are non-zero (as proxy for connection complexity)
-            X['tcp_feature_count'] = X[tcp_columns].fillna(0).astype(bool).sum(axis=1)
-
-        # Fill remaining missing values
-        X = X.fillna(0)
-
-        print(f"Added {X.shape[1]} features after engineering")
-        return X
+    
