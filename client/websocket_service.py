@@ -59,7 +59,7 @@ class WebSocketClient:
         if os.path.exists(version_path):
             with open(version_path, "r") as f:
                 version = f.read().strip()
-                match = re.search(r'g(\d+)\.keras', version)
+                match = re.search(r'g(\d+)\.h5', version)
                 if match:
                     return int(match.group(1))
         return 0
@@ -101,7 +101,7 @@ class WebSocketClient:
                 if message.startswith(("LATEST_MODEL:", "NEW_MODEL:")):
                     print(f"Received message: {message}")
                     version = message.split(":")[1]
-                    match = re.search(r'g(\d+)\.keras', version)
+                    match = re.search(r'g(\d+)\.h5', version)
                     if match and int(match.group(1)) > self.last_downloaded_version:
                         await self.retry_update_model(version)
                 else:

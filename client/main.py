@@ -49,9 +49,7 @@ def upload_file(file_path, container_name, metadata):
         with open(file_path, "rb") as file:
             blob_client.upload_blob(file.read(), overwrite=True, metadata=metadata)
         print(f"File {filename} uploaded successfully to Azure Blob Storage.")
-        print(f"File {filename} uploaded successfully to Azure Blob Storage.")
     except Exception as e:
-        print(f"Error uploading file {filename}: {e}")
         print(f"Error uploading file {filename}: {e}")
 
 def save_run_info(config, stats, model_info, eval_results):
@@ -141,7 +139,6 @@ def get_versioned_filename(client_id, save_dir, extension="keras"):
     Args:
         client_id (str): ID of the client.
         save_dir (str): Directory to save files.
-        prefix (str): Prefix for the file (e.g., 'weights', 'model').
         extension (str): File extension (e.g., 'keras').
 
     Returns:
@@ -166,12 +163,88 @@ def save_weights(client_id, model, save_dir):
     """
     os.makedirs(save_dir, exist_ok=True)
 
-    weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir)
+    weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir, extension="h5")
     try:
         model.save_weights(weights_path)
         print(f"Weights for {client_id} saved at {weights_path}")
     except Exception as e:
         print(f"Failed to save weights for {client_id}: {e}")
+    return weights_path, timestamp
+
+    
+def add_laplace_noise_to_weights(weights, epsilon, sensitivity):
+    """
+    Add Laplace noise to model weights for differential privacy.
+    - weights: model weights to perturb.
+    - epsilon: privacy budget.
+    - sensitivity: sensitivity of the weights.
+    """
+    # Safe handling for different weight types
+    if isinstance(weights, np.ndarray):
+        # For numpy arrays
+        noise = np.random.laplace(0, sensitivity / epsilon, size=weights.shape)
+        return weights + noise
+    elif tf.is_tensor(weights):
+        # For tensorflow tensors
+        noise = tf.random.stateless_normal(
+            shape=weights.shape,
+            seed=[42, 0],  # Fixed seed for reproducibility
+            mean=0.0,
+            stddev=sensitivity / epsilon
+        )
+        return weights + noise
+    else:
+        # For other types (like lists), convert to numpy first
+        weights_array = np.array(weights)
+        noise = np.random.laplace(0, sensitivity / epsilon, size=weights_array.shape)
+        return weights_array + noise
+
+def save_weights_with_dp(client_id, model, save_dir, epsilon, sensitivity):
+    """
+    Save model weights with versioning and added DP noise.
+    - epsilon: privacy budget.
+    - sensitivity: sensitivity of the weights.
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    
+    # Get versioned filename
+    weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir, extension="h5")
+
+    try:
+        # Get model weights
+        model_weights = model.get_weights()
+        
+        # Add DP noise to each weight tensor
+        noisy_weights = []
+        for w in model_weights:
+            # Skip adding noise to small tensors like biases if they're too small
+            if np.prod(w.shape) > 10:  # Only add noise to larger weight matrices
+                noisy_w = add_laplace_noise_to_weights(w, epsilon, sensitivity)
+                noisy_weights.append(noisy_w)
+            else:
+                noisy_weights.append(w)  # Keep small tensors as is
+
+        # Set noisy weights back to the model
+        model.set_weights(noisy_weights)
+
+        # Save noisy weights to the specified path
+        model.save_weights(weights_path)
+        print(f"Differentially private weights for {client_id} saved at {weights_path}")
+        
+        # Also save to the standard weights.h5 file
+        model.save_weights(os.path.join(save_dir, "weights.h5"))
+        print(f"Also saved to {os.path.join(save_dir, 'weights.h5')}")
+        
+    except Exception as e:
+        print(f"Failed to save weights with DP for {client_id}: {e}")
+        # Try to save without DP as fallback
+        try:
+            model.save_weights(weights_path)
+            model.save_weights(os.path.join(save_dir, "weights.h5"))
+            print(f"Saved weights without DP as fallback")
+        except Exception as e2:
+            print(f"Failed to save weights even without DP: {e2}")
+
     return weights_path, timestamp
 
 
@@ -188,18 +261,18 @@ def save_model(client_id, model, save_dir):
     except Exception as e:
         print(f"Failed to save model for {client_id}: {e}")
     return model_path
-    
+
 def main(client_id):
     """Main function to run the entire pipeline"""
     # Configuration settings
     config = {
         'data_path_pattern': f"{path}/data_part_*.csv",  # Path to dataset
-        'max_samples': 30000,                                # Set to a number to limit samples
-        'test_size': 0.2,                                    # Test split proportion
-        'epochs': 50,                                        # Max training epochs
-        'batch_size': 32,                                   # Training batch size
-        'random_state': 42,                                  # For reproducibility
-        'model_architecture':  [128, 64],                    # Units per hidden layer
+        'max_samples': 30000,                            # Set to a number to limit samples
+        'test_size': 0.2,                                # Test split proportion
+        'epochs': 30,                                    # Max training epochs
+        'batch_size': 128,                                # Training batch size (reduced from 64)
+        'random_state': 42,                              # For reproducibility
+        'model_architecture':  [128, 64],                # Units per hidden layer
     }
 
     # Check if the dataset exists, wait if not
@@ -246,36 +319,47 @@ def main(client_id):
     )
 
     print("\nTraining MLP model...")
+    # Pass DP arguments - updated values for better stability
+    use_dp = True
+    l2_norm_clip = 0.5
+    noise_multiplier = 1.5   # Higher values provide better privacy but may reduce model accuracy
+    microbatches = 1        # Start with 1 microbatch for simplicity
     
     if load_model_weights(model, save_dir):
         print("Weights loaded successfully.")
     else:
         print("Failed to load weights. Training from scratch.")
+    
+    # Train the model
     history, training_time = trainer.train_model(
         X_train, y_train_cat, X_test, y_test_cat,
         model=model,
         epochs=config['epochs'],
         batch_size=config['batch_size'],
-        verbose=2
+        verbose=2,
+        use_dp=use_dp,
+        l2_norm_clip=l2_norm_clip,
+        noise_multiplier=noise_multiplier,
+        microbatches=microbatches
     )
+    
     model = trainer.get_model()
+    print("Model training complete.")
+
     try:
-        final_loss = history.history['loss'][-1]
+        if history and hasattr(history, 'history') and 'loss' in history.history:
+            final_loss = history.history['loss'][-1]
+        else:
+            final_loss = None
     except Exception as e:
         print(f"Error getting final loss: {e}")
-        final_loss = 0
+        final_loss = None
 
     # Prepare metadata
     metadata = {
         'num_examples': str(num_examples),
-        'loss': str(final_loss),
+        'loss': str(final_loss) if final_loss is not None else "unknown",
     }
-    
-    # Save weights
-    model.save_weights(os.path.join(save_dir, "weights.h5"))
-    weights_path, timestamp = save_weights(client_id, model, save_dir)
-    upload_file(weights_path, CLIENT_CONTAINER_NAME, metadata)
-
 
     # Evaluate model
     print("\nEvaluating model...")
@@ -283,8 +367,12 @@ def main(client_id):
     eval_results = evaluator.evaluate_model(model, X_test, y_test, y_test_cat)
 
     # Generate predictions for visualization
-    y_pred_proba = model.predict(X_test)
-    y_pred = np.argmax(y_pred_proba, axis=1)
+    try:
+        y_pred_proba = model.predict(X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+    except Exception as e:
+        print(f"Error generating predictions: {e}")
+        y_pred = None
 
     # Prepare model information
     model_info = {
