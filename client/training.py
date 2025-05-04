@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
+from tensorflow.keras.callbacks import LearningRateScheduler, ReduceLROnPlateau
 from model import IoTModel
 
 class IoTModelTrainer:
@@ -209,6 +210,22 @@ class IoTModelTrainer:
         self.model.compile(optimizer=optimizer,
                         loss='categorical_crossentropy',
                         metrics=['accuracy'])
+        
+        # Define a custom learning rate scheduler function
+        def lr_schedule(epoch, lr):
+            """
+            Custom learning rate schedule:
+            - Reduce learning rate at specific epochs.
+            """
+            if epoch < 10:
+                return lr  # Keep the initial learning rate
+            elif epoch < 20:
+                return lr * 0.5  # Reduce by half after 10 epochs
+            elif epoch < 30:
+                return lr * 0.1  # Reduce further after 20 epochs
+            else:
+                return lr * 0.01  # Minimal learning rate after 30 epochs
+
 
         # Callbacks
         early_stopping = EarlyStopping(
@@ -226,6 +243,18 @@ class IoTModelTrainer:
             verbose=1
         )
 
+        # Add the learning rate scheduler callback
+        lr_scheduler = LearningRateScheduler(lr_schedule, verbose=1)
+
+        # Optionally, use ReduceLROnPlateau for dynamic adjustment
+        reduce_lr = ReduceLROnPlateau(
+            monitor='val_loss',
+            factor=0.5,  # Reduce learning rate by half
+            patience=5,  # Wait for 5 epochs of no improvement
+            min_lr=1e-6,  # Minimum learning rate
+            verbose=1
+        )
+
         start_time = time.time()
         
         try:
@@ -234,7 +263,7 @@ class IoTModelTrainer:
                 validation_data=(X_test, y_test_cat),
                 epochs=epochs,
                 batch_size=batch_size,
-                callbacks=[early_stopping, model_checkpoint],
+                callbacks=[early_stopping, model_checkpoint, lr_scheduler, reduce_lr],
                 verbose=verbose
             )
             training_success = True

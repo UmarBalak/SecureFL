@@ -267,12 +267,12 @@ def main(client_id):
     # Configuration settings
     config = {
         'data_path_pattern': f"{path}/data_part_*.csv",  # Path to dataset
-        'max_samples': 30000,                            # Set to a number to limit samples
+        'max_samples': 100000,                            # Set to a number to limit samples
         'test_size': 0.2,                                # Test split proportion
         'epochs': 30,                                    # Max training epochs
-        'batch_size': 128,                                # Training batch size (reduced from 64)
+        'batch_size': 64,                                # Training batch size (reduced from 64)
         'random_state': 42,                              # For reproducibility
-        'model_architecture':  [128, 64],                # Units per hidden layer
+        'model_architecture': [256, 128, 128, 64],                # Units per hidden layer
     }
 
     # Check if the dataset exists, wait if not
@@ -320,9 +320,16 @@ def main(client_id):
 
     print("\nTraining MLP model...")
     # Pass DP arguments - updated values for better stability
-    use_dp = True
-    l2_norm_clip = 0.5
-    noise_multiplier = 1.5   # Higher values provide better privacy but may reduce model accuracy
+    use_dp = False
+    l2_norm_clip = 1.2       # l2 norm clipping value for DP
+    noise_multiplier = 0.8   # Higher values provide better privacy but may reduce model accuracy
+
+    #########################################################
+    # noise_multiplier --> 0 - 0.5 --> weak privacy
+    # noise_multiplier --> 1.0 --> moderate privacy (Practical DP (many papers use this))
+    # noise_multiplier --> 1.5 - 3.0 --> strong privacy (e.g., health)
+    #########################################################
+
     microbatches = 1        # Start with 1 microbatch for simplicity
     
     if load_model_weights(model, save_dir):
@@ -345,6 +352,7 @@ def main(client_id):
     
     model = trainer.get_model()
     print("Model training complete.")
+    model.summary()
 
     try:
         if history and hasattr(history, 'history') and 'loss' in history.history:
