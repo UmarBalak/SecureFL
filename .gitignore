@@ -12,6 +12,12 @@ test.py
 
 adaptfl_client/
 
+*.bin
+*.json
+*.pkl
+*.npy
+.artifacts/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
