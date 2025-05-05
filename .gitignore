@@ -8,6 +8,7 @@ logs/
 models/
 global_model/
 plots/
+test.py
 
 adaptfl_client/
 
