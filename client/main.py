@@ -135,14 +135,14 @@ def load_model_weights(model, directory_path):
         print(f"Error loading weights: {str(e)}")
         return False
 
-def get_versioned_filename(client_id, save_dir, extension="keras"):
+def get_versioned_filename(client_id, save_dir, extension=".h5"):
     """
     Generate a versioned filename with timestamp for saving models or weights.
 
     Args:
         client_id (str): ID of the client.
         save_dir (str): Directory to save files.
-        extension (str): File extension (e.g., 'keras').
+        extension (str): File extension (e.g., '.h5').
 
     Returns:
         str: Full path to the versioned filename.
@@ -322,6 +322,8 @@ def main(client_id):
         num_classes=len(preprocessor.attack_type_map),
         architecture=config['model_architecture']
     )
+    model.save(os.path.join(save_dir, "model_arch.h5"))  # Save model architecture
+    print(f"Model architecture saved at {os.path.join(save_dir, 'model_arch.h5')}")
 
     print("\nTraining MLP model...")
     # Pass DP arguments - updated values for better stability
