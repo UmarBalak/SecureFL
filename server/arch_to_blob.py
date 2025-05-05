@@ -54,7 +54,7 @@ if __name__ == "__main__":
         logging.error(f"Failed to initialize Azure Blob Service: {e}")
         raise
 
-    model = tf.keras.saving.load_model("D:\FL\client\models\model_arch.h5")
+    model = tf.keras.models.load_model("D:\FL\client\models\model_arch.h5")
     
     # Upload the architecture
     upload_model_architecture(model, blob_service_client, CLIENT_CONTAINER_NAME)
