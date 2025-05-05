@@ -23,10 +23,10 @@ import tempfile
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Optional, Tuple
 import numpy as np
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, ContainerClient
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path='.env')
+load_dotenv(dotenv_path='.env.server')
 
 import os
 from sqlalchemy import create_engine, Column, String, DateTime, Table, Integer, ForeignKey, select
@@ -166,7 +166,10 @@ CLIENT_ACCOUNT_URL = os.getenv("CLIENT_ACCOUNT_URL")
 SERVER_ACCOUNT_URL = os.getenv("SERVER_ACCOUNT_URL")
 CLIENT_CONTAINER_NAME = os.getenv("CLIENT_CONTAINER_NAME")
 SERVER_CONTAINER_NAME = os.getenv("SERVER_CONTAINER_NAME")
-ARCH_BLOB_NAME = "model_architecture.keras"
+LOCAL_CONTAINER_URL = os.getenv("LOCAL_CONTAINER_URL")
+GLOBAL_CONTAINER_URL = os.getenv("GLOBAL_CONTAINER_URL")
+CLIENT_CONTAINER_SAS_TOKEN = os.getenv("CLIENT_CONTAINER_SAS_TOKEN")
+ARCH_BLOB_NAME = "model_architecture.h5"
 CLIENT_NOTIFICATION_URL = os.getenv("CLIENT_NOTIFICATION_URL")
 
 if not CLIENT_ACCOUNT_URL or not SERVER_ACCOUNT_URL:
@@ -195,12 +198,12 @@ def get_model_architecture() -> Optional[object]:
         
         # Download architecture file to memory
         arch_data = blob_client.download_blob().readall()
-        with tempfile.NamedTemporaryFile(suffix='.keras', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
             temp_file.write(arch_data)
             temp_path = temp_file.name
         
         model = keras.models.load_model(temp_path, compile=False)
-
+        model.summary()
         os.unlink(temp_path)
         return model
     
@@ -232,8 +235,9 @@ def load_weights_from_blob(
     """
     try:
         # Regex pattern to extract client_id and timestamp
-        pattern = re.compile(r"client([0-9a-fA-F\-]+)_v\d+_(\d{8}_\d{6})\.keras")
-        container_client = blob_service_client.get_container_client(container_name)
+        pattern = re.compile(r"localweights/client([0-9a-fA-F\-]+)_v\d+_(\d{8}_\d{6})\.h5")
+        container_client = ContainerClient.from_container_url(LOCAL_CONTAINER_URL, credential=CLIENT_CONTAINER_SAS_TOKEN)
+
 
         weights_list = []
         num_examples_list = []
@@ -241,10 +245,16 @@ def load_weights_from_blob(
         new_last_aggregation_timestamp = last_aggregation_timestamp
 
         blobs = list(container_client.list_blobs())
+        logging.info(f"Number of blobs: {len(blobs)-1}")
+        for blob in blobs:
+            print(blob.name)
+
 
         for blob in blobs:
+            logging.info(f"Processing blob: {blob.name}")
             match = pattern.match(blob.name)
             if match:
+                logging.info(f"Blob name matches pattern: {blob.name}")
                 client_id = match.group(1)  # Extract client ID
                 timestamp_str = match.group(2)
                 timestamp_int = int(timestamp_str.replace("_", ""))
@@ -253,7 +263,7 @@ def load_weights_from_blob(
                     blob_client = container_client.get_blob_client(blob.name)
 
                     # Download the blob and load weights
-                    with tempfile.NamedTemporaryFile(suffix='.keras', delete=False) as temp_file:
+                    with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
                         download_stream = blob_client.download_blob()
                         temp_file.write(download_stream.readall())
                         temp_path = temp_file.name
@@ -278,6 +288,8 @@ def load_weights_from_blob(
                     # Store (client_id, weights)
                     weights_list.append((client_id, weights))
                     new_last_aggregation_timestamp = max(new_last_aggregation_timestamp, timestamp_int)
+            else:
+                logging.warning(f"Blob name does not match pattern: {blob.name}")
 
         if not weights_list:
             logging.info(f"No new weights found since {last_aggregation_timestamp}.")
@@ -334,7 +346,7 @@ def save_weights_to_blob(weights: List[np.ndarray], filename: str, model) -> boo
     """
     temp_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix='.keras', delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(suffix='.h5', delete=False) as temp_file:
             temp_path = temp_file.name
             model.set_weights(weights)
             model.save_weights(temp_path)
@@ -355,6 +367,50 @@ def save_weights_to_blob(weights: List[np.ndarray], filename: str, model) -> boo
     finally:
         if temp_path and os.path.exists(temp_path):
             os.unlink(temp_path)
+
+def federated_weighted_averaging(weights_list, num_examples_list, loss_list, alpha=0.7):
+    """Perform Weighted Federated Averaging with improved loss weighting."""
+    if not weights_list or not num_examples_list or not loss_list:
+        logging.error("Missing inputs for aggregation.")
+        return None
+    
+    total_examples = sum(num_examples_list)
+    if total_examples == 0:
+        logging.error("Total examples is zero.")
+        return None
+
+    # Softmax-based loss weighting
+    loss_weights = np.exp(-np.array(loss_list))
+    loss_weights = loss_weights / np.sum(loss_weights)
+    
+    # Combine data size and loss weights
+    final_weights = []
+    for i in range(len(weights_list)):
+        data_weight = num_examples_list[i] / total_examples
+        combined_weight = alpha * data_weight + (1 - alpha) * loss_weights[i]
+        final_weights.append(combined_weight)
+    
+    # Normalize final weights
+    final_weights = np.array(final_weights) / np.sum(final_weights)
+    
+    # Initialize and compute weighted average
+    avg_weights = [np.zeros_like(layer, dtype=np.float64) for layer in weights_list[0]]
+    for i, layer_weights in enumerate(zip(*weights_list)):
+        for client_idx, client_weights in enumerate(layer_weights):
+            avg_weights[i] += client_weights * final_weights[client_idx]
+            
+    return avg_weights
+
+def get_versioned_filename(version: int, prefix="g", extension=".h5"):
+    filename = f"{prefix}{version}.{extension}"
+    return filename
+
+# Admin authentication function
+def verify_admin(api_key: str):
+    admin_key = os.getenv("ADMIN_API_KEY", "your_admin_secret_key")
+    if api_key != admin_key:
+        raise HTTPException(status_code=403, detail="Unauthorized admin access")
+
 
 async def aggregate_weights_core(db: Session):
     try:
@@ -452,114 +508,6 @@ async def aggregate_weights_core(db: Session):
         db.rollback()
         raise HTTPException(status_code=500, detail="An unexpected error occurred") from e
 
-
-def federated_weighted_averaging(weights_list, num_examples_list, loss_list, alpha=0.7):
-    """Perform Weighted Federated Averaging with improved loss weighting."""
-    if not weights_list or not num_examples_list or not loss_list:
-        logging.error("Missing inputs for aggregation.")
-        return None
-    
-    total_examples = sum(num_examples_list)
-    if total_examples == 0:
-        logging.error("Total examples is zero.")
-        return None
-
-    # Softmax-based loss weighting
-    loss_weights = np.exp(-np.array(loss_list))
-    loss_weights = loss_weights / np.sum(loss_weights)
-    
-    # Combine data size and loss weights
-    final_weights = []
-    for i in range(len(weights_list)):
-        data_weight = num_examples_list[i] / total_examples
-        combined_weight = alpha * data_weight + (1 - alpha) * loss_weights[i]
-        final_weights.append(combined_weight)
-    
-    # Normalize final weights
-    final_weights = np.array(final_weights) / np.sum(final_weights)
-    
-    # Initialize and compute weighted average
-    avg_weights = [np.zeros_like(layer, dtype=np.float64) for layer in weights_list[0]]
-    for i, layer_weights in enumerate(zip(*weights_list)):
-        for client_idx, client_weights in enumerate(layer_weights):
-            avg_weights[i] += client_weights * final_weights[client_idx]
-            
-    return avg_weights
-
-import numpy as np
-
-def add_laplace_noise(weights, epsilon, sensitivity):
-    """
-    Adds Laplace noise to the model weights for differential privacy.
-    - weights: model weights to perturb.
-    - epsilon: privacy budget.
-    - sensitivity: sensitivity of the weights.
-    """
-    noise = np.random.laplace(0, sensitivity / epsilon, size=weights.shape)
-    return weights + noise
-
-def federated_weighted_averaging_with_dp(weights_list, num_examples_list, loss_list, epsilon=2.0, sensitivity=0.1, alpha=0.7):
-    """Perform Weighted Federated Averaging with DP noise addition to the aggregated weights."""
-    if not weights_list or not num_examples_list or not loss_list:
-        logging.error("Missing inputs for aggregation.")
-        return None
-    
-    total_examples = sum(num_examples_list)
-    if total_examples == 0:
-        logging.error("Total examples is zero.")
-        return None
-
-    # Softmax-based loss weighting
-    loss_weights = np.exp(-np.array(loss_list))
-    loss_weights = loss_weights / np.sum(loss_weights)
-    
-    # Combine data size and loss weights
-    final_weights = []
-    for i in range(len(weights_list)):
-        data_weight = num_examples_list[i] / total_examples
-        combined_weight = alpha * data_weight + (1 - alpha) * loss_weights[i]
-        final_weights.append(combined_weight)
-    
-    # Normalize final weights
-    final_weights = np.array(final_weights) / np.sum(final_weights)
-    
-    # Initialize and compute weighted average
-    avg_weights = [np.zeros_like(layer, dtype=np.float64) for layer in weights_list[0]]
-    for i, layer_weights in enumerate(zip(*weights_list)):
-        for client_idx, client_weights in enumerate(layer_weights):
-            avg_weights[i] += client_weights * final_weights[client_idx]
-
-    # Convert to numpy array for easier manipulation
-    avg_weights = np.array(avg_weights)
-
-    # Add DP noise to the aggregated weights
-    dp_weights = []
-    for weights in avg_weights:
-        # Apply Laplace noise to each layer's weights
-        dp_weights.append(add_laplace_noise(weights, epsilon, sensitivity))
-    
-    return dp_weights
-
-
-def get_versioned_filename(version: int, prefix="g", extension="keras"):
-    filename = f"{prefix}{version}.{extension}"
-    return filename
-
-def get_latest_model_version() -> str:
-    # Fetch the latest model version from the database
-    db = get_db()
-    latest_model = db.query(GlobalModel).order_by(GlobalModel.version.desc()).first()
-    
-    if latest_model:
-        return f"g{latest_model.version}.keras"
-    return "none"
-
-
-# Admin authentication function
-def verify_admin(api_key: str):
-    admin_key = os.getenv("ADMIN_API_KEY", "your_admin_secret_key")
-    if api_key != admin_key:
-        raise HTTPException(status_code=403, detail="Unauthorized admin access")
 
 # Initialize FastAPI app with connection manager
 manager = ConnectionManager()
@@ -702,7 +650,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, db: Session =
         # Get the latest model version and send to the client
         latest_model = db.query(GlobalModel).order_by(GlobalModel.version.desc()).first()
         global_vars_runtime['latest_version'] = latest_model.version if latest_model else 0
-        latest_model_version = f"g{global_vars_runtime['latest_version']}.keras"
+        latest_model_version = f"g{global_vars_runtime['latest_version']}.h5"
         await websocket.send_text(f"LATEST_MODEL:{latest_model_version}")
 
         while True:
@@ -788,7 +736,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, db: Session =
 # Scheduler setup
 scheduler = BackgroundScheduler()
 
-@scheduler.scheduled_job(CronTrigger(minute="*/10"))
+@scheduler.scheduled_job(CronTrigger(minute="*/3"))
 def scheduled_aggregate_weights():
     """
     Scheduled task to aggregate weights every minute.
@@ -803,7 +751,7 @@ def scheduled_aggregate_weights():
         db.close()
 scheduler.start()
 
-# if __name__ == "__main__":
-#     import uvicorn
-#     logging.info("Starting Server...")
-#     uvicorn.run(app, host="localhost", port=8000)
+if __name__ == "__main__":
+    import uvicorn
+    logging.info("Starting Server...")
+    uvicorn.run(app, host="localhost", port=8000)
