@@ -39,12 +39,15 @@ def upload_file(file_path, container_name, metadata):
     Upload a file to Azure Blob Storage with versioned naming.
 
     Args:
-        client_id (str): ID of the client.
         file_path (str): Path to the file to upload.
         container_name (str): Azure container name.
+        metadata (dict): Metadata to attach to the blob.
     """
-    filename = os.path.basename(file_path)
+    # Ensure the blob name is just the filename
+    filename = os.path.basename(file_path)  # Extract only the filename
+    print(f"Uploading {filename} to Azure Blob Storage...")
     try:
+        # Get the blob client for the file
         blob_client = BLOB_SERVICE_CLIENT.get_blob_client(container=container_name, blob=filename)
         with open(file_path, "rb") as file:
             blob_client.upload_blob(file.read(), overwrite=True, metadata=metadata)
@@ -118,11 +121,11 @@ def load_model_weights(model, directory_path):
     """
     try:
         # Search for .h5 files in the directory
-        keras_file = next((file for file in glob.glob(os.path.join(directory_path, "weights.h5"))), None)
+        h5_weights_file = next((file for file in glob.glob(os.path.join(directory_path, "weights.h5"))), None)
         
-        if keras_file:
-            model.load_weights(keras_file)
-            print(f"Successfully loaded weights from {keras_file}")
+        if h5_weights_file:
+            model.load_weights(h5_weights_file)
+            print(f"Successfully loaded weights from {h5_weights_file}")
             return True
         
         print(f"No .h5 files found in {directory_path}")
@@ -312,6 +315,8 @@ def main(client_id):
 
     # Initialize trainer
     trainer = IoTModelTrainer(random_state=config['random_state'])
+
+    # Create model (architecture)
     model = trainer.create_model(
         input_dim=X_train.shape[1],
         num_classes=len(preprocessor.attack_type_map),
@@ -320,9 +325,9 @@ def main(client_id):
 
     print("\nTraining MLP model...")
     # Pass DP arguments - updated values for better stability
-    use_dp = False
-    l2_norm_clip = 1.2       # l2 norm clipping value for DP
-    noise_multiplier = 0.8   # Higher values provide better privacy but may reduce model accuracy
+    use_dp = True
+    l2_norm_clip = 1.5       # l2 norm clipping value for DP
+    noise_multiplier = 0.7   # Higher values provide better privacy but may reduce model accuracy
 
     #########################################################
     # noise_multiplier --> 0 - 0.5 --> weak privacy
@@ -400,7 +405,17 @@ def main(client_id):
     print(f"Training time: {training_time:.2f} seconds")
     print(f"{'='*70}\n")
 
+    ###########################################
+    weights_path, timestamp = save_weights(client_id, model, save_dir)
+    upload_file(weights_path, CLIENT_CONTAINER_NAME, metadata)
+    ###########################################
+
 if __name__ == "__main__":
-    load_dotenv(dotenv_path='.env')
+    load_dotenv(dotenv_path='.env.client')
     client_id = os.getenv("CLIENT_ID")
-    main(client_id)
+    if not client_id:
+        print("Client ID environment variable is missing.")
+        raise ValueError("Missing required environment variable: CLIENT_ID")
+    else:
+        print(f"Client ID: {client_id}")
+        main(client_id)

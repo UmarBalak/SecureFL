@@ -323,13 +323,6 @@ class IoTModelTrainer:
         training_time = time.time() - start_time
 
         print(f"Model training completed in {training_time:.2f} seconds")
-        
-        # Save model and weights
-        try:
-            self.model.save('models/model.h5')
-            print("Model saved successfully")
-        except Exception as e:
-            print(f"Error saving model: {str(e)}")
             
         try:
             self.model.save_weights('models/weights.h5')
