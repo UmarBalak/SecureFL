@@ -6,23 +6,24 @@ import json
 from datetime import datetime
 import glob
 import re
+import logging
+import pickle
+import sys
 
-# Import custom modules
-from preprocessing import IoTDataPreprocessor
-from model import IoTModel
-from training import IoTModelTrainer
-from evaluation import IoTModelEvaluator
-
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from client.preprocessing import IoTDataPreprocessor
+from client.model import IoTModel
+from client.training import IoTModelTrainer
+from client.evaluation import IoTModelEvaluator
 from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
-load_dotenv(dotenv_path='.env')
+load_dotenv(dotenv_path='.env.client')
 
 CLIENT_ACCOUNT_URL = os.getenv("CLIENT_ACCOUNT_URL")
 CLIENT_CONTAINER_NAME = os.getenv("CLIENT_CONTAINER_NAME")
 
 if not CLIENT_ACCOUNT_URL:
-    print("SAS url environment variable is missing.")
-    raise ValueError("Missing required environment variable: SAS url")
+    raise ValueError("Missing required environment variable: Account url")
 
 try:
     BLOB_SERVICE_CLIENT = BlobServiceClient(account_url=CLIENT_ACCOUNT_URL)
@@ -30,33 +31,52 @@ except Exception as e:
     print(f"Failed to initialize Azure Blob Service: {e}")
     raise
 
-path = "D:\FL\client\DATA"
+path = "/home/umarb/SecureFL/client/DATA"
 script_directory = os.path.dirname(os.path.realpath(__file__))
 save_dir = os.path.join(script_directory, "models")
 
-def upload_file(file_path, container_name, metadata):
-    """
-    Upload a file to Azure Blob Storage with versioned naming.
+from he.phe_provider import PHEProvider
+from he.fhe_provider import FHEProvider
 
-    Args:
-        file_path (str): Path to the file to upload.
-        container_name (str): Azure container name.
-        metadata (dict): Metadata to attach to the blob.
+phe_provider = PHEProvider.generate()
+fhe_provider = FHEProvider.generate()
+
+def quantize_to_float(weights):
     """
-    # Ensure the blob name is just the filename
-    filename = os.path.basename(file_path)  # Extract only the filename
-    print(f"Uploading {filename} to Azure Blob Storage...")
+    Quantizes weights to 6-bit floating-point precision (float-to-float, 6 decimal digits).
+    """
+    quantized_weights = []
+    for w in weights:
+        # Round to 6 decimal places to simulate 6-bit float precision
+        quantized = np.round(w, decimals=7).astype(np.float32)
+        quantized_weights.append(quantized)
+    return quantized_weights
+
+def count_decimal_places(weight_array):
+    """
+    Counts decimal places in each weight and returns max decimal places.
+    """
+    decimals = []
+    for w in np.nditer(weight_array):
+        s = f"{float(w):.20f}".rstrip('0')
+        if '.' in s:
+            decimals.append(len(s.split('.')[1]))
+        else:
+            decimals.append(0)
+    return max(decimals, default=0)
+
+def upload_file(file_path, container_name, metadata):
+    filename = os.path.basename(file_path)
+    print(f"Uploading weights ({filename}) to Azure Blob Storage...")
     try:
-        # Get the blob client for the file
         blob_client = BLOB_SERVICE_CLIENT.get_blob_client(container=container_name, blob=filename)
         with open(file_path, "rb") as file:
             blob_client.upload_blob(file.read(), overwrite=True, metadata=metadata)
-        print(f"File {filename} uploaded successfully to Azure Blob Storage.")
+        print(f"Weights ({filename}) uploaded successfully to Azure Blob Storage.")
     except Exception as e:
-        print(f"Error uploading file {filename}: {e}")
+        print(f"Error uploading weights ({filename}): {e}")
 
 def save_run_info(config, stats, model_info, eval_results):
-    """Save run information to JSON file"""
     run_info = {
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'configuration': config,
@@ -65,24 +85,12 @@ def save_run_info(config, stats, model_info, eval_results):
         'evaluation_results': {k: v for k, v in eval_results.items()
                               if k != 'confusion_matrix' and k != 'per_class_metrics'}
     }
-
-    # Save to file
     os.makedirs('logs', exist_ok=True)
     with open('logs/run_summary.json', 'w') as f:
         json.dump(run_info, f, indent=2)
-
     print("Run information saved to 'logs/run_summary.json'")
 
 def find_csv_file(file_pattern):
-    """
-    Find a CSV file matching the given pattern.
-
-    Args:
-        file_pattern (str): The file pattern to search for (e.g., "data_part_*.csv").
-
-    Returns:
-        str: The path to the first matching file, or None if no file is found.
-    """
     matching_files = glob.glob(file_pattern)
     if matching_files:
         print(f"Found dataset: {matching_files[0]}")
@@ -92,13 +100,6 @@ def find_csv_file(file_pattern):
         return None
 
 def wait_for_csv(file_pattern, wait_time=300):
-    """
-    Wait for a CSV file matching the given pattern to appear.
-
-    Args:
-        file_pattern (str): The file pattern to search for (e.g., "data_part_*.csv").
-        wait_time (int): Time to wait (in seconds) before rechecking.
-    """
     print(f"Checking for dataset matching pattern: {file_pattern}")
     while True:
         csv_file = find_csv_file(file_pattern)
@@ -109,46 +110,19 @@ def wait_for_csv(file_pattern, wait_time=300):
         print(f"Rechecking for dataset matching pattern: {file_pattern}")
 
 def load_model_weights(model, directory_path):
-    """
-    Load the first .h5 weights file found in the specified directory.
-
-    Args:
-        model: Keras model instance.
-        directory_path: Path to directory containing weights file.
-
-    Returns:
-        bool: True if weights loaded successfully, False otherwise.
-    """
     try:
-        # Search for .h5 files in the directory
         h5_weights_file = next((file for file in glob.glob(os.path.join(directory_path, "weights.h5"))), None)
-        
         if h5_weights_file:
             model.load_weights(h5_weights_file)
             print(f"Successfully loaded weights from {h5_weights_file}")
             return True
-        
         print(f"No .h5 files found in {directory_path}")
         return False
-
     except Exception as e:
         print(f"Error loading weights: {str(e)}")
         return False
 
-def get_versioned_filename(client_id, save_dir, extension=".h5"):
-    """
-    Generate a versioned filename with timestamp for saving models or weights.
-
-    Args:
-        client_id (str): ID of the client.
-        save_dir (str): Directory to save files.
-        extension (str): File extension (e.g., '.h5').
-
-    Returns:
-        str: Full path to the versioned filename.
-        int: Next version number.
-        str: Timestamp for the file.
-    """
+def get_versioned_filename(client_id, save_dir, extension=".pkl"):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     version_pattern = re.compile(rf"client{client_id}_v(\d+).*\.{extension}")
     existing_versions = [
@@ -161,11 +135,7 @@ def get_versioned_filename(client_id, save_dir, extension=".h5"):
     return os.path.join(save_dir, filename), next_version, timestamp
 
 def save_weights(client_id, model, save_dir):
-    """
-    Save model weights with versioning.
-    """
     os.makedirs(save_dir, exist_ok=True)
-
     weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir, extension="h5")
     try:
         model.save_weights(weights_path)
@@ -174,89 +144,65 @@ def save_weights(client_id, model, save_dir):
         print(f"Failed to save weights for {client_id}: {e}")
     return weights_path, timestamp
 
-    
-def add_laplace_noise_to_weights(weights, epsilon, sensitivity):
-    """
-    Add Laplace noise to model weights for differential privacy.
-    - weights: model weights to perturb.
-    - epsilon: privacy budget.
-    - sensitivity: sensitivity of the weights.
-    """
-    # Safe handling for different weight types
-    if isinstance(weights, np.ndarray):
-        # For numpy arrays
-        noise = np.random.laplace(0, sensitivity / epsilon, size=weights.shape)
-        return weights + noise
-    elif tf.is_tensor(weights):
-        # For tensorflow tensors
-        noise = tf.random.stateless_normal(
-            shape=weights.shape,
-            seed=[42, 0],  # Fixed seed for reproducibility
-            mean=0.0,
-            stddev=sensitivity / epsilon
-        )
-        return weights + noise
-    else:
-        # For other types (like lists), convert to numpy first
-        weights_array = np.array(weights)
-        noise = np.random.laplace(0, sensitivity / epsilon, size=weights_array.shape)
-        return weights_array + noise
+def encrypt_weights(weights, provider, provider_type="fhe"):
+    logging.info(f"Encrypting weights with {provider_type.upper()}Provider...")
+    result = []
+    for i, weight_tensor in enumerate(weights):
+        logging.info(f"Encrypting tensor {i+1}/{len(weights)}")
+        encrypted_tensor, original_shape = provider.encrypt_tensor(weight_tensor)
+        logging.info(f"Encrypted tensor {i+1}: shape={original_shape}")
+        result.append((encrypted_tensor, original_shape))
+    return result
 
-def save_weights_with_dp(client_id, model, save_dir, epsilon, sensitivity):
-    """
-    Save model weights with versioning and added DP noise.
-    - epsilon: privacy budget.
-    - sensitivity: sensitivity of the weights.
-    """
+def save_weights_with_encryption(client_id, model, save_dir, provider, encryption_type="fhe"):
+    logging.info("Initializing encryption...")
     os.makedirs(save_dir, exist_ok=True)
-    
-    # Get versioned filename
-    weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir, extension="h5")
-
+    weights_path, next_version, timestamp = get_versioned_filename(client_id, save_dir, extension="pkl")
     try:
-        # Get model weights
+        logging.info("Getting model weights...")
         model_weights = model.get_weights()
-        
-        # Add DP noise to each weight tensor
-        noisy_weights = []
-        for w in model_weights:
-            # Skip adding noise to small tensors like biases if they're too small
-            if np.prod(w.shape) > 10:  # Only add noise to larger weight matrices
-                noisy_w = add_laplace_noise_to_weights(w, epsilon, sensitivity)
-                noisy_weights.append(noisy_w)
-            else:
-                noisy_weights.append(w)  # Keep small tensors as is
-
-        # Set noisy weights back to the model
-        model.set_weights(noisy_weights)
-
-        # Save noisy weights to the specified path
-        model.save_weights(weights_path)
-        print(f"Differentially private weights for {client_id} saved at {weights_path}")
-        
-        # Also save to the standard weights.h5 file
-        model.save_weights(os.path.join(save_dir, "weights.h5"))
-        print(f"Also saved to {os.path.join(save_dir, 'weights.h5')}")
-        
+        logging.info("Model weights retrieved successfully.")
+        logging.info(f"Model weights shape: {[w.shape for w in model_weights]}")
+        logging.info(f"Encrypting weights using {encryption_type}...")
+        encrypted_weights = encrypt_weights(model_weights, provider, encryption_type)
+        logging.info("Weights encrypted successfully.")
+        logging.info(f"Saving encrypted weights to {weights_path}...")
+        with open(weights_path, "wb") as f:
+            pickle.dump(encrypted_weights, f, protocol=pickle.HIGHEST_PROTOCOL)
+        logging.info(f"Encrypted weights ({encryption_type}) for {client_id} saved at {weights_path}")
+        metadata_path = weights_path.replace(".pkl", "_metadata.json")
+        metadata = {
+            "client_id": client_id,
+            "version": next_version,
+            "timestamp": timestamp,
+            "encryption_type": encryption_type,
+            "model_architecture": [w.shape for w in model_weights]
+        }
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f, indent=2)
     except Exception as e:
-        print(f"Failed to save weights with DP for {client_id}: {e}")
-        # Try to save without DP as fallback
-        try:
-            model.save_weights(weights_path)
-            model.save_weights(os.path.join(save_dir, "weights.h5"))
-            print(f"Saved weights without DP as fallback")
-        except Exception as e2:
-            print(f"Failed to save weights even without DP: {e2}")
-
+        logging.error(f"Failed to save encrypted weights for {client_id}: {e}")
+        raise
     return weights_path, timestamp
 
+def load_encrypted_weights(weights_path, provider, encryption_type="fhe"):
+    logging.info(f"Loading encrypted weights from {weights_path}...")
+    try:
+        with open(weights_path, "rb") as f:
+            encrypted_weights = pickle.load(f)
+        decrypted_weights = []
+        for i, (enc_tensor, original_shape) in enumerate(encrypted_weights):
+            logging.info(f"Decrypting tensor {i+1}/{len(encrypted_weights)}")
+            decrypted_tensor = provider.decrypt_tensor(enc_tensor, original_shape)
+            decrypted_weights.append(decrypted_tensor)
+        logging.info("Weights decrypted successfully.")
+        return decrypted_weights
+    except Exception as e:
+        logging.error(f"Failed to load encrypted weights: {e}")
+        raise
 
 def save_model(client_id, model, save_dir):
-    """
-    Save the trained model with versioning.
-    """
     os.makedirs(save_dir, exist_ok=True)
-
     model_path = os.path.join(save_dir, f"weights.h5")
     try:
         model.save(model_path)
@@ -266,85 +212,53 @@ def save_model(client_id, model, save_dir):
     return model_path
 
 def main(client_id):
-    """Main function to run the entire pipeline"""
-    # Configuration settings
     config = {
-        'data_path_pattern': f"{path}/data_part_*.csv",  # Path to dataset
-        'max_samples': 100000,                            # Set to a number to limit samples
-        'test_size': 0.2,                                # Test split proportion
-        'epochs': 30,                                    # Max training epochs
-        'batch_size': 64,                                # Training batch size (reduced from 64)
-        'random_state': 42,                              # For reproducibility
-        'model_architecture': [256, 128, 128, 64],                # Units per hidden layer
+        'data_path_pattern': f"{path}/data_part_*.csv",
+        'max_samples': 5000,
+        'test_size': 0.2,
+        'epochs': 1,
+        'batch_size': 64,
+        'random_state': 42,
+        'model_architecture': [256, 128, 128, 64],
     }
-
-    # Check if the dataset exists, wait if not
     config['data_path'] = wait_for_csv(config['data_path_pattern'])
-
-    # Set random seeds for reproducibility
     np.random.seed(config['random_state'])
     tf.random.set_seed(config['random_state'])
-
-    # Create directory structure
     for directory in ['models', 'logs', 'plots', 'data', 'federated_models']:
         os.makedirs(directory, exist_ok=True)
-
     print(f"\n{'='*70}")
     print(f"SecureFL")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
-
-    # Initialize data preprocessor
-    print("Initializing data preprocessor...")
     preprocessor = IoTDataPreprocessor(random_state=config['random_state'])
-
-    # Load and preprocess data
     X, y = preprocessor.load_data(config['data_path'])
     num_examples = len(X)
     print("Data loaded successfully")
     print(f"X shape: {X.shape}, y shape: {y.shape}")
     print(f"X columns: {X.columns.tolist()}")
-
-    # Preprocess data
     preprocessing_start_time = time.time()
     (X_train, X_test, y_train, y_test,
      y_train_cat, y_test_cat, stats) = preprocessor.preprocess_data(
         X, y, max_samples=config['max_samples'], test_size=config['test_size']
     )
     preprocessing_time = time.time() - preprocessing_start_time
-
-    # Initialize trainer
     trainer = IoTModelTrainer(random_state=config['random_state'])
-
-    # Create model (architecture)
     model = trainer.create_model(
         input_dim=X_train.shape[1],
         num_classes=len(preprocessor.attack_type_map),
         architecture=config['model_architecture']
     )
-    model.save(os.path.join(save_dir, "model_arch.h5"))  # Save model architecture
+    model.save(os.path.join(save_dir, "model_arch.h5"))
     print(f"Model architecture saved at {os.path.join(save_dir, 'model_arch.h5')}")
-
     print("\nTraining MLP model...")
-    # Pass DP arguments - updated values for better stability
     use_dp = True
-    l2_norm_clip = 1.5       # l2 norm clipping value for DP
-    noise_multiplier = 0.7   # Higher values provide better privacy but may reduce model accuracy
-
-    #########################################################
-    # noise_multiplier --> 0 - 0.5 --> weak privacy
-    # noise_multiplier --> 1.0 --> moderate privacy (Practical DP (many papers use this))
-    # noise_multiplier --> 1.5 - 3.0 --> strong privacy (e.g., health)
-    #########################################################
-
-    microbatches = 1        # Start with 1 microbatch for simplicity
-    
+    l2_norm_clip = 1.5
+    noise_multiplier = 0.7
+    microbatches = 1
     if load_model_weights(model, save_dir):
         print("Weights loaded successfully.")
     else:
         print("Failed to load weights. Training from scratch.")
-    
-    # Train the model
     history, training_time = trainer.train_model(
         X_train, y_train_cat, X_test, y_test_cat,
         model=model,
@@ -356,11 +270,9 @@ def main(client_id):
         noise_multiplier=noise_multiplier,
         microbatches=microbatches
     )
-    
     model = trainer.get_model()
     print("Model training complete.")
     model.summary()
-
     try:
         if history and hasattr(history, 'history') and 'loss' in history.history:
             final_loss = history.history['loss'][-1]
@@ -369,48 +281,66 @@ def main(client_id):
     except Exception as e:
         print(f"Error getting final loss: {e}")
         final_loss = None
-
-    # Prepare metadata
     metadata = {
         'num_examples': str(num_examples),
         'loss': str(final_loss) if final_loss is not None else "unknown",
     }
-
-    # Evaluate model
-    print("\nEvaluating model...")
+    print("\nEvaluating model on original weights...")
     evaluator = IoTModelEvaluator(preprocessor.attack_type_map)
     eval_results = evaluator.evaluate_model(model, X_test, y_test, y_test_cat)
+    original_loss, original_accuracy = model.evaluate(X_test, y_test_cat, verbose=0)
+    print(f"Original Weights - Loss: {original_loss:.4f}, Accuracy: {original_accuracy:.4f}")
 
-    # Generate predictions for visualization
-    try:
-        y_pred_proba = model.predict(X_test)
-        y_pred = np.argmax(y_pred_proba, axis=1)
-    except Exception as e:
-        print(f"Error generating predictions: {e}")
-        y_pred = None
+    # Quantize to 6-bit float
+    print("\nQuantizing weights to 6-decimal float...")
+    original_weights = model.get_weights()
+    quantized_weights = quantize_to_float(original_weights)
+    model.set_weights(quantized_weights)
+    print("Evaluating model on quantized weights...")
+    eval_results_quantized = evaluator.evaluate_model(model, X_test, y_test, y_test_cat)
+    quantized_loss, quantized_accuracy = model.evaluate(X_test, y_test_cat, verbose=0)
+    print(f"Quantized Weights - Loss: {quantized_loss:.4f}, Accuracy: {quantized_accuracy:.4f}")
 
-    # Prepare model information
+    # Encrypt and save quantized weights
+    encryption_type = "fhe"
+    print("\nEncrypting quantized weights...")
+    weights_path, timestamp = save_weights_with_encryption(client_id, model, save_dir, fhe_provider, encryption_type)
+    # upload_file(weights_path, CLIENT_CONTAINER_NAME, metadata)
+
+    # Decrypt and compare
+    print("\nDecrypting weights...")
+    decrypted_weights = load_encrypted_weights(weights_path=weights_path, provider=fhe_provider, encryption_type="fhe")
+
+    # Compare original (quantized) and decrypted weights
+    print("\nComparing quantized and decrypted weights...")
+    for i, (quantized, decrypted) in enumerate(zip(quantized_weights, decrypted_weights)):
+        quantized_np = quantized.numpy() if isinstance(quantized, tf.Tensor) else quantized
+        decrypted_np = decrypted.numpy() if isinstance(decrypted, tf.Tensor) else decrypted
+        if np.allclose(quantized_np, decrypted_np, rtol=1e-5, atol=1e-6):
+            print(f"Tensor {i+1} decrypted successfully and matches quantized weights.")
+        else:
+            diff = np.abs(quantized_np - decrypted_np)
+            max_diff = np.max(diff)
+            idx = np.unravel_index(np.argmax(diff), diff.shape)
+            print(f"Tensor {i+1} mismatch after decryption.")
+            print(f"Max difference: {max_diff}")
+            print(f"Quantized value at max difference: {quantized_np[idx]}")
+            print(f"Decrypted value at max difference: {decrypted_np[idx]}")
+
     model_info = {
         'training_time': training_time,
         'parameters': model.count_params(),
         'layers': len(model.layers)
     }
-
-    # Save run information
     save_run_info(config, stats, model_info, eval_results)
-
     print(f"\n{'='*70}")
     print(f"SecureFL - Run Complete")
     print(f"Ended at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Model accuracy: {eval_results['accuracy']:.4f}")
+    print(f"Original accuracy: {eval_results['accuracy']:.4f}")
+    print(f"Quantized accuracy: {eval_results_quantized['accuracy']:.4f}")
     print(f"Preprocessing time: {preprocessing_time:.2f} seconds")
     print(f"Training time: {training_time:.2f} seconds")
     print(f"{'='*70}\n")
-
-    ###########################################
-    weights_path, timestamp = save_weights(client_id, model, save_dir)
-    upload_file(weights_path, CLIENT_CONTAINER_NAME, metadata)
-    ###########################################
 
 if __name__ == "__main__":
     load_dotenv(dotenv_path='.env.client')

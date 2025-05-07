@@ -13,7 +13,7 @@ import hashlib
 import pkg_resources
 from decimal import Decimal, getcontext, ROUND_HALF_UP
 
-getcontext().prec = 32  # High precision for Decimal
+getcontext().prec = 32
 
 try:
     import concrete.numpy as cnp
@@ -31,7 +31,6 @@ from .base import BaseCryptoProvider
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("FHEProvider")
 
-# Check Concrete-Numpy version
 try:
     concrete_version = pkg_resources.get_distribution("concrete-numpy").version
     logger.info(f"Using Concrete-Numpy version {concrete_version}")
@@ -40,7 +39,7 @@ except pkg_resources.DistributionNotFound:
 
 class FHEProvider(BaseCryptoProvider):
     def __init__(self, min_range: int = -100000000, max_range: int = 100000000, 
-                 scaling_factor: int = 1000000000000, adaptive_scaling: bool = False,
+                 scaling_factor: int = 10000000, adaptive_scaling: bool = False,
                  max_workers: int = None):
         self.min_range = min_range
         self.max_range = max_range
@@ -54,19 +53,17 @@ class FHEProvider(BaseCryptoProvider):
         logger.info(f"FHE Provider initialized with scaling_factor={scaling_factor}, adaptive_scaling={adaptive_scaling}")
 
     def _compile_circuits(self):
-        # Identity circuit for encryption/decryption
         def identity(x):
             return x
         logger.info("Compiling FHE identity circuit...")
         compiler = cnp.Compiler(identity, {"x": EncryptionStatus.ENCRYPTED})
-        step = 10  # Smaller step for higher precision
+        step = 10
         inputset = [np.array([i]) for i in range(self.min_range, self.max_range + 1, step)]
         self._circuit_cache['identity'] = compiler.compile(inputset)
         logger.info("FHE identity circuit compiled.")
 
-        # Weighted sum circuit for aggregation
         def weighted_sum(x, w):
-            return np.sum(x * w)  # No division in circuit
+            return np.sum(x * w)
         logger.info("Compiling FHE weighted sum circuit...")
         compiler = cnp.Compiler(weighted_sum, {
             "x": EncryptionStatus.ENCRYPTED,
@@ -86,20 +83,25 @@ class FHEProvider(BaseCryptoProvider):
             return self.base_scaling_factor
         circuit_range = self.max_range / 2
         optimal_scale = circuit_range / abs_max
-        min_scale = 1000000000000
-        max_scale = 1000000000000
+        min_scale = 100000
+        max_scale = 10000000
         scaling = max(min(optimal_scale, max_scale), min_scale)
         logger.debug(f"Adjusted scaling factor to {scaling} (data range: {abs_max})")
         return scaling
+
+    def quantize_tensor(self, tensor: Union[np.ndarray, tf.Tensor], scaling_factor: float = None) -> np.ndarray:
+        scaling_factor = scaling_factor or self.scaling_factor
+        return np.round(np.array(tensor) * scaling_factor).astype(np.int64)
+
+    def dequantize_tensor(self, tensor: np.ndarray, scaling_factor: float = None) -> np.ndarray:
+        scaling_factor = scaling_factor or self.scaling_factor
+        return tensor.astype(np.float32) / scaling_factor
 
     def encrypt(self, value: float) -> Dict[str, Any]:
         scaled_value = int(Decimal(str(value)) * Decimal(str(self.scaling_factor)).to_integral_value(rounding=ROUND_HALF_UP))
         scaled_value = max(min(scaled_value, self.max_range), self.min_range)
         logger.debug(f"Encrypting value={value}, scaled_value={scaled_value}, scaling_factor={self.scaling_factor}")
-        logger.info(f"Encrypting value={value}, scaled_value={scaled_value}, scaling_factor={self.scaling_factor}")
-
-        # Log the value right before encryption
-        logger.debug(f"Value before encryption: {value}")
+        # logger.info(f"Encrypting value={value}, scaled_value={scaled_value}, scaling_factor={self.scaling_factor}")
 
         try:
             circuit = self._circuit_cache['identity']
@@ -131,16 +133,11 @@ class FHEProvider(BaseCryptoProvider):
             scaling_factor = encrypted_data['scaling_factor']
             logger.debug(f"Decrypting scaled_value={scaled_value}, scaling_factor={scaling_factor}")
             decrypted_value = float(Decimal(str(scaled_value)) / Decimal(str(scaling_factor)))
-
-            # Log the value right after decryption
-            logger.debug(f"Value after decryption: {decrypted_value}")
-
             logger.debug(f"Decrypted value={decrypted_value}")
             return decrypted_value
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
             raise ValueError(f"Decryption failed: {str(e)}")
-
 
     def _encrypt_batch(self, values: List[float]) -> List[Dict[str, Any]]:
         return [self.encrypt(val) for val in values]
@@ -152,28 +149,21 @@ class FHEProvider(BaseCryptoProvider):
         numpy_array = tensor.numpy() if isinstance(tensor, tf.Tensor) else np.array(tensor)
         self.scaling_factor = self._adjust_scaling_factor(numpy_array)
         logger.info(f"Encrypting tensor with scaling_factor={self.scaling_factor}")
+        
         flat_array = numpy_array.astype(np.float64).flatten()
-        batch_size = max(1, len(flat_array) // self.max_workers)
-        batches = [flat_array[i:i + batch_size] for i in range(0, len(flat_array), batch_size)]
-        encrypted_batches = []
+        
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(self._encrypt_batch, batch) for batch in batches]
-            for future in concurrent.futures.as_completed(futures):
-                encrypted_batches.append(future.result())
-        encrypted_array = [item for batch in encrypted_batches for item in batch]
-        return encrypted_array, numpy_array.shape
-
-    def decrypt_tensor(self, encrypted_weights: List[Dict[str, Any]], shape: Tuple) -> tf.Tensor:
-        batch_size = max(1, len(encrypted_weights) // self.max_workers)
-        batches = [encrypted_weights[i:i + batch_size] for i in range(0, len(encrypted_weights), batch_size)]
-        decrypted_batches = []
+            encrypted_flat = list(executor.map(self.encrypt, flat_array))
+        
+        original_shape = numpy_array.shape
+        return encrypted_flat, original_shape
+    
+    def decrypt_tensor(self, encrypted_flat: List[Dict[str, Any]], original_shape: Tuple) -> np.ndarray:
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = [executor.submit(self._decrypt_batch, batch) for batch in batches]
-            for future in concurrent.futures.as_completed(futures):
-                decrypted_batches.append(future.result())
-        decrypted_flat_array = [item for batch in decrypted_batches for item in batch]
-        decrypted_tensor = np.array(decrypted_flat_array).reshape(shape)
-        return tf.convert_to_tensor(decrypted_tensor, dtype=tf.float32)
+            decrypted_flat = list(executor.map(self.decrypt, encrypted_flat))
+        
+        decrypted_array = np.array(decrypted_flat).reshape(original_shape)
+        return decrypted_array
 
     def secure_weighted_sum(self, encrypted_tensors: List[List[Dict[str, Any]]], weights: List[float]) -> List[Dict[str, Any]]:
         if not encrypted_tensors or not weights or len(encrypted_tensors) != len(weights):
@@ -261,7 +251,7 @@ class FHEProvider(BaseCryptoProvider):
 
     @classmethod
     def generate(cls, min_range: int = -100000000, max_range: int = 100000000, 
-                 scaling_factor: int = 1000000000000, adaptive_scaling: bool = False,
+                 scaling_factor: int = 10000000, adaptive_scaling: bool = False,
                  max_workers: int = None) -> 'FHEProvider':
         return cls(min_range, max_range, scaling_factor, adaptive_scaling, max_workers)
 
@@ -285,7 +275,7 @@ class FHEProvider(BaseCryptoProvider):
         provider = cls(
             min_range=params.get("min_range", -100000000),
             max_range=params.get("max_range", 100000000),
-            scaling_factor=params.get("base_scaling_factor", 1000000000000),
+            scaling_factor=params.get("base_scaling_factor", 10000000),
             adaptive_scaling=params.get("adaptive_scaling", False),
             max_workers=params.get("max_workers", None)
         )

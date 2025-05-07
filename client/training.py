@@ -2,10 +2,9 @@ import time
 import os
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
+from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler, ReduceLROnPlateau
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
-from tensorflow.keras.callbacks import LearningRateScheduler, ReduceLROnPlateau
-from model import IoTModel
+from .model import IoTModel
 
 class IoTModelTrainer:
     def __init__(self, random_state=42):
@@ -93,6 +92,10 @@ class IoTModelTrainer:
 
         # Calculate the appropriate number of microbatches
         num_samples = len(X_train)
+        if use_dp and DPKerasAdamOptimizer is None:
+            print("DPKerasAdamOptimizer is unavailable. Falling back to standard Adam optimizer.")
+            use_dp = False  # Disable DP if the optimizer is not available
+
         if use_dp:
             # If microbatches > batch_size, reduce it to batch_size
             if microbatches > batch_size:
@@ -125,21 +128,56 @@ class IoTModelTrainer:
             try:
                 # Try to import using current tensorflow_privacy package structure
                 try:
-                    from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
+                    # from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
                     
                     # Calculate privacy using the compute_dp_sgd_privacy function
                     # which internally uses the RDP accountant
                     sampling_rate = batch_size / num_samples
                     delta = 1.0 / num_samples
                     
-                    epsilon = compute_dp_sgd_privacy.compute_dp_sgd_privacy(
-                        n=num_samples,
+                    # epsilon = compute_dp_sgd_privacy.compute_dp_sgd_privacy(
+                    #     n=num_samples,
+                    #     batch_size=batch_size,
+                    #     noise_multiplier=noise_multiplier,
+                    #     epochs=epochs,
+                    #     delta=delta
+                    # )[0]
+                    import dp_accounting
+
+                    def compute_epsilon(
+                        num_samples: int,
+                        batch_size: int,
+                        noise_multiplier: float,
+                        epochs: int,
+                        delta: float
+                    ) -> float:
+                        if noise_multiplier == 0.0:
+                            return float("inf")
+                        steps = epochs * num_samples // batch_size
+                        sampling_probability = batch_size / num_samples
+                        orders = [1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64))
+                        accountant = dp_accounting.rdp.RdpAccountant(orders)
+                        event = dp_accounting.SelfComposedDpEvent(
+                            dp_accounting.PoissonSampledDpEvent(
+                                sampling_probability,
+                                dp_accounting.GaussianDpEvent(noise_multiplier)
+                            ),
+                            steps
+                        )
+                        accountant.compose(event)
+                        return accountant.get_epsilon(target_delta=delta)
+
+                    # Usage:
+                    epsilon = compute_epsilon(
+                        num_samples=num_samples,
                         batch_size=batch_size,
                         noise_multiplier=noise_multiplier,
                         epochs=epochs,
                         delta=delta
-                    )[0]
-                    
+                    )
+                    print(f"Epsilon: {epsilon:.4f}")
+
+                                        
                 except ImportError:
                     # Try alternative import paths for different tensorflow_privacy versions
                     try:
