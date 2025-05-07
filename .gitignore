@@ -1,8 +1,12 @@
+venv*
+.venv*
+
 .env
 .env.server
 .env.client
 
 DATA/
+data/
 federated_models/
 logs/
 models/
