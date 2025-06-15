@@ -1,0 +1,59 @@
+
+FHE Performance Analysis Report
+Generated on: 2025-06-01 17:21:28
+
+=== EXECUTIVE SUMMARY ===
+This analysis examines the performance characteristics of Fully Homomorphic Encryption (FHE) 
+across different model sizes using the CKKS scheme with polynomial modulus degree 32768.
+
+=== KEY FINDINGS ===
+
+1. PERFORMANCE SCALING:
+   - Model parameters range from 5,839 (tiny) to 15,759 (large)
+   - Total pipeline time varies significantly with decryption being the bottleneck for larger models
+   - Encryption time shows moderate scaling with model size
+
+2. RESOURCE UTILIZATION:
+   - CPU usage remains relatively stable (322-330%) across model sizes
+   - Memory usage scales proportionally with model complexity (8.8-9.1 GB)
+   - Communication overhead decreases with larger models (546→206 ratio)
+
+3. EFFICIENCY METRICS:
+   - Throughput ranges from 3598.8 to 7720.8 params/sec
+   - Time per parameter: 0.130-0.278 ms/param
+   - Memory efficiency varies significantly across model sizes
+
+4. BOTTLENECKS IDENTIFIED:
+   - Decryption time becomes dominant for larger models (70.7% for large model)
+   - Encryption overhead is consistent across different model sizes
+   - Client-to-client variability is minimal, indicating stable performance
+
+=== RECOMMENDATIONS ===
+
+1. For production deployments:
+   - Medium model offers best balance of performance and capabilities
+   - Consider optimizing decryption process for larger models
+   - Monitor memory usage in constrained environments
+
+2. For development:
+   - Use tiny/small models for rapid prototyping
+   - Scale gradually to assess performance impact
+   - Implement client load balancing for consistent performance
+
+=== TECHNICAL DETAILS ===
+- Scheme: CKKS with 32768 polynomial modulus degree
+- Coefficient modulus: [60, 40, 40, 60] bits
+- Test environment: 4 clients per model size
+- Metrics collected: encryption, aggregation, decryption times, resource usage
+
+=== FILES GENERATED ===
+1. 01_parameters_vs_performance.png - Core performance metrics
+2. 02_time_breakdown.png - Pipeline time analysis
+3. 03_resource_usage.png - CPU and memory analysis
+4. 04_overhead_analysis.png - Computational and communication overhead
+5. 05_file_size_analysis.png - Plaintext vs encrypted size comparison
+6. 06_client_variability.png - Performance consistency across clients
+7. 07_performance_scaling.png - Normalized performance comparison
+8. 08_performance_heatmap.png - Comprehensive metrics visualization
+9. 09_cost_benefit_analysis.png - Efficiency and throughput analysis
+10. performance_summary.csv - Detailed numerical results

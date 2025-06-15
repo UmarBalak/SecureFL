@@ -1,195 +1,150 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.impute import SimpleImputer
-from imblearn.over_sampling import SMOTE
-from tensorflow.keras.utils import to_categorical
-import joblib
-import os
+from sklearn.preprocessing import StandardScaler, LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
 import warnings
-
 warnings.filterwarnings('ignore')
 
 class IoTDataPreprocessor:
-    def __init__(self, random_state=42):
-        self.random_state = random_state
-        self.attack_type_map = {
-            'Normal': 0, 'MITM': 1, 'Fingerprinting': 2, 'Ransomware': 3,
-            'Uploading': 4, 'SQL_injection': 5, 'DDoS_HTTP': 6, 'DDoS_TCP': 7,
-            'Password': 8, 'Port_Scanning': 9, 'Vulnerability_scanner': 10,
-            'Backdoor': 11, 'XSS': 12, 'DDoS_UDP': 13, 'DDoS_ICMP': 14
-        }
-        self.inv_attack_map = {v: k for k, v in self.attack_type_map.items()}
-        self.scaler = None
-        self.imputer = None
+    def __init__(self):
+        # Expanded protected sparse features to retain more IoT-relevant columns
+        self.protected_sparse_features = [
+            'tcp.flags', 'tcp.flags.ack', 'tcp.dstport', 'tcp.srcport',
+            'dns.qry.name.len', 'mqtt.topic_len', 'mqtt.hdrflags',
+            'mqtt.len', 'mqtt.msgtype', 'mqtt.ver',
+            'http.content_length', 'dns.qry.type', 'dns.qry.qu',
+            'tcp.ack', 'tcp.len', 'tcp.seq', 'tcp.connection.fin',
+            'tcp.connection.rst', 'tcp.connection.syn', 'tcp.connection.synack',
+            'udp.port', 'udp.stream', 'udp.time_delta',
+            'icmp.checksum', 'icmp.seq_le', 'arp.opcode', 'arp.hw.size',
+            'mqtt.conack.flags', 'mqtt.conflag.cleansess', 'mqtt.conflags',
+            'mbtcp.len', 'mbtcp.trans_id', 'mbtcp.unit_id'
+        ]
+        # Categorical columns to encode
+        self.categorical_columns = [
+            'http.request.method', 'dns.qry.qu', 'dns.qry.type',
+            'mqtt.msg_decoded_as', 'mqtt.protoname'
+        ]
 
-        # Ensure directories exist
-        dirs = ['models', 'data', 'logs', 'plots', 'federated_models']
-        for dir in dirs:
-            if not os.path.exists(dir):
-                os.makedirs(dir)
+    def preprocess_data(self, path):
+        print(f"Found dataset: {path}\n{'='*70}")
+        df = pd.read_csv(path)
 
-    def load_data(self, file_path):
-        """Load the dataset and prepare features and labels"""
-        print("Loading dataset...")
-        try:
-            df = pd.read_csv(file_path)
-            print(f"Dataset loaded successfully with {df.shape[0]} rows and {df.shape[1]} columns")
-            print(f"Columns in dataset: {df.columns.tolist()}")
-            # Map attack types to numerical labels
-            df['label'] = df['Attack_type'].map(self.attack_type_map)
-
-            # Extract features to keep
-            features_to_keep = [
-                'arp.src.proto_ipv4', 'arp.dst.proto_ipv4', 'arp.opcode',
-                'icmp.checksum', 'icmp.seq_le', 'icmp.transmit_timestamp',
-                'http.file_data', 'http.content_length', 'http.request.uri.query', 'http.request.method',
-                'http.referer', 'http.request.full_uri', 'http.request.version', 'http.response',
-                'tcp.options', 'tcp.payload', 'tcp.srcport', 'tcp.flags', 'tcp.flags.ack',
-                'tcp.connection.syn', 'tcp.connection.rst', 'tcp.connection.fin',
-                'udp.time_delta',
-                'dns.qry.name', 'dns.qry.name.len', 'dns.qry.qu', 'dns.qry.type', 'dns.retransmission',
-                'mqtt.protoname', 'mqtt.topic', 'mqtt.conack.flags', 'mqtt.msg', 'mqtt.len',
-                'mqtt.msgtype', 'mqtt.hdrflags',
-                'frame.time'
-            ]
-
-            # Filter features
-            X = df[features_to_keep]
-            y = df['label']
-
-            # Convert to numeric
-            for col in X.columns:
-                X[col] = pd.to_numeric(X[col], errors='coerce')
-
-            print(f"Features prepared: {X.shape[1]} features selected")
-            return X, y
-        except Exception as e:
-            print(f"Error loading data: {e}")
-            raise
-
-    def add_advanced_features(self, X):
-        """Engineer additional features for improved model performance"""
-        print("Engineering advanced features...")
-
-        # Time-based features
-        if 'udp.time_delta' in X.columns:
-            X['udp_time_stats'] = X['udp.time_delta'].rolling(window=5, min_periods=1).std()
-            X['udp_time_mean'] = X['udp.time_delta'].rolling(window=5, min_periods=1).mean()
-            X['udp_time_max'] = X['udp.time_delta'].rolling(window=5, min_periods=1).max()
-
-            # Additional advanced features
-            X['udp_time_entropy'] = X['udp.time_delta'].rolling(window=10, min_periods=1).apply(
-                lambda x: -np.sum(np.square(x/x.sum()) * np.log(x/x.sum() + 1e-10))
-            )
-
-        # DNS features
-        if 'dns.qry.name.len' in X.columns:
-            X['dns_name_length_ratio'] = X['dns.qry.name.len'] / (X['dns.qry.name.len'].mean() + 1)
-            X['dns_length_normalized'] = X['dns.qry.name.len'] / X['dns.qry.name.len'].max()
-
-            # Detect anomalous DNS query lengths (potential data exfiltration)
-            X['dns_anomaly_score'] = np.abs(X['dns.qry.name.len'] - X['dns.qry.name.len'].mean()) / X['dns.qry.name.len'].std()
-
-        # MQTT features
-        if 'mqtt.msg' in X.columns:
-            X['mqtt.msg'] = X['mqtt.msg'].fillna('').astype(str)
-            X['mqtt_msg_density'] = X['mqtt.msg'].apply(len) / (X['mqtt.msg'].str.len().mean() + 1)
-
-            # Extract numeric-only features from mqtt fields
-            if 'mqtt.len' in X.columns:
-                X['mqtt_len_normalized'] = X['mqtt.len'] / (X['mqtt.len'].max() + 1)
-
-        # TCP connection features
-        tcp_columns = [col for col in X.columns if col.startswith('tcp')]
-        if len(tcp_columns) > 0:
-            if 'tcp.flags' in X.columns and 'tcp.srcport' in X.columns:
-                X['tcp_port_flag_ratio'] = X['tcp.flags'] / (X['tcp.srcport'] + 1)
-
-            # Count TCP features that are non-zero (as proxy for connection complexity)
-            X['tcp_feature_count'] = X[tcp_columns].fillna(0).astype(bool).sum(axis=1)
-
-        # Fill remaining missing values
-        X = X.fillna(0)
-
-        print(f"Added {X.shape[1]} features after engineering")
-        return X
-
-    def preprocess_data(self, X, y, max_samples=None, test_size=0.2):
-        """Preprocess the data with advanced feature engineering and handling missing values"""
-        print("\nPreprocessing data...")
-
-        # Limit samples if specified
-        if max_samples and max_samples < len(X):
-            X, _, y, _ = train_test_split(X, y, train_size=max_samples,
-                                        random_state=self.random_state, stratify=y)
-            print(f"Using limited dataset: {max_samples} samples")
-        else:
-            print(f"Using full dataset: {len(X)} samples")
+        print("DataFrame Info:\n" + "-"*30)
+        print(f"Shape: {df.shape}")
+        print(f"Missing Values: {df.isna().sum().sum()} ({df.isna().sum().sum() / df.size * 100:.2f}%)")
+        print(f"Duplicate Rows: {df.duplicated().sum()}")
 
         # Handle missing values
-        print("Handling missing values...")
-        self.imputer = SimpleImputer(strategy='mean')
-        X = pd.DataFrame(self.imputer.fit_transform(X), columns=X.columns)
+        print("\nHandling missing values...")
+        for col in df.columns:
+            if col in self.categorical_columns:
+                df[col].fillna(df[col].mode()[0] if not df[col].mode().empty else 'Unknown', inplace=True)
+            else:
+                df[col].fillna(0, inplace=True)  # Numeric IoT features often use 0 for missing
 
-        # Remove any remaining NaN rows and align the indices of X and y
-        mask = ~X.isna().any(axis=1)
-        X = X[mask].reset_index(drop=True)  # Reset index for X
-        y = y[mask.values].reset_index(drop=True)  # Filter y using mask values and reset index
+        # Drop constant columns
+        print("\nRemoving constant columns...")
+        constant_dropped = []
+        for col in df.columns:
+            if df[col].nunique() == 1:
+                df.drop(col, axis=1, inplace=True)
+                constant_dropped.append(col)
+        if constant_dropped:
+            print(f"Dropped constant columns: {constant_dropped}")
 
-        # Add advanced features
-        X = self.add_advanced_features(X)
+        # Drop irrelevant high-cardinality or unstructured text columns
+        drop_columns = [
+            'arp.dst.proto_ipv4', 'arp.src.proto_ipv4',
+            'http.file_data', 'http.request.full_uri', 'http.request.version',
+            'tcp.options', 'tcp.payload', 'mqtt.msg', 'mqtt.topic',
+            'http.referer', 'dns.qry.name'  # High-cardinality, dropped for simplicity
+        ]
+        dropped = [col for col in drop_columns if col in df.columns]
+        df.drop(columns=dropped, inplace=True)
+        if dropped:
+            print(f"\nDropped irrelevant columns: {dropped}")
 
-        # Train-test split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=test_size, random_state=self.random_state, stratify=y)
+        # Encode categorical columns
+        print("\nEncoding categorical columns...")
+        le_dict = {}
+        for col in self.categorical_columns:
+            if col in df.columns:
+                le = LabelEncoder()
+                df[col] = le.fit_transform(df[col].astype(str))
+                le_dict[col] = le
+                print(f"Encoded {col} with {len(le.classes_)} unique values")
 
-        # Reset indices
-        X_train = X_train.reset_index(drop=True)
-        X_test = X_test.reset_index(drop=True)
-        y_train = y_train.reset_index(drop=True)
-        y_test = y_test.reset_index(drop=True)
+        # Feature engineering: Example for http.referer (if not dropped)
+        # if 'http.referer' in df.columns:
+        #     df['http.referer_present'] = df['http.referer'].notna().astype(int)
+        #     df.drop('http.referer', axis=1, inplace=True)
+
+        # Drop sparse features with higher threshold
+        zero_dropped = []
+        for col in df.columns:
+            if col in self.protected_sparse_features or col in ['Attack_label', 'Attack_type']:
+                continue
+            try:
+                if df[col].dtype in [np.float64, np.int64]:
+                    zero_ratio = (df[col] == 0).sum() / len(df)
+                    if zero_ratio > 0.85:  # Relaxed threshold
+                        df.drop(col, axis=1, inplace=True)
+                        zero_dropped.append((col, zero_ratio))
+            except:
+                continue
+        if zero_dropped:
+            print("\nZero-dominant columns dropped:")
+            for col, ratio in zero_dropped:
+                print(f"{col}: {ratio:.2%} zeros")
+        print(f"Shape after zero-drop: {df.shape}")
+
+        # Debug: Check column types before scaling
+        print("\nColumn types before scaling:\n", df.dtypes)
+
+        # Encode Attack_type
+        le = LabelEncoder()
+        df['Attack_type'] = le.fit_transform(df['Attack_type'])
+
+        print("\n--- Class Distributions ---")
+        print("Attack_label:\n", df['Attack_label'].value_counts())
+        print("Attack_type:\n", df['Attack_type'].value_counts())
+
+        # Targets
+        y_binary = df.pop('Attack_label')
+        y_multiclass = df.pop('Attack_type')
+
+        # Ensure only numeric columns remain
+        non_numeric = df.select_dtypes(exclude=[np.number]).columns
+        if len(non_numeric) > 0:
+            print(f"\nWarning: Dropping non-numeric columns: {non_numeric.tolist()}")
+            df.drop(columns=non_numeric, inplace=True)
 
         # Feature scaling
-        self.scaler = StandardScaler()
-        X_train_scaled = self.scaler.fit_transform(X_train)
-        X_test_scaled = self.scaler.transform(X_test)
+        scaler = StandardScaler()
+        df_scaled = scaler.fit_transform(df)
 
-        # Convert to DataFrame for future use
-        X_train_scaled = pd.DataFrame(X_train_scaled, columns=X_train.columns)
-        X_test_scaled = pd.DataFrame(X_test_scaled, columns=X_test.columns)
+        # Train/test split
+        X_train, X_test, y_train, y_test = train_test_split(
+            df_scaled, y_multiclass,
+            test_size=0.2,
+            stratify=y_multiclass,
+            random_state=42
+        )
 
-        # Fill any remaining NaN values
-        X_train_scaled = X_train_scaled.fillna(0)
-        X_test_scaled = X_test_scaled.fillna(0)
+        # Feature selection using Random Forest
+        print("\nPerforming feature selection...")
+        rf = RandomForestClassifier(random_state=42, n_jobs=-1)
+        rf.fit(X_train, y_train)
+        feature_importance = pd.Series(rf.feature_importances_, index=df.columns).sort_values(ascending=False)
+        print("\nTop 10 features by importance:\n", feature_importance.head(10))
+        top_features = feature_importance.head(40).index  # Keep top 40
+        feature_indices = [df.columns.get_loc(col) for col in top_features]
+        X_train = X_train[:, feature_indices]
+        X_test = X_test[:, feature_indices]
 
-        # Balance the training data using SMOTE
-        print("\nBalancing dataset with SMOTE...")
-        smote = SMOTE(random_state=self.random_state)
-        X_train_balanced, y_train_balanced = smote.fit_resample(X_train_scaled, y_train)
+        num_classes = len(np.unique(y_multiclass))
+        print(f"\n✅ Preprocessing complete. Final shape: {X_train.shape}, Classes: {num_classes}")
 
-        # Convert labels to one-hot encoding for neural network
-        num_classes = len(self.attack_type_map)
-        y_train_categorical = to_categorical(y_train_balanced, num_classes=num_classes)
-        y_test_categorical = to_categorical(y_test, num_classes=num_classes)
-
-        print(f"Preprocessing complete. Training set: {X_train_balanced.shape}, Test set: {X_test_scaled.shape}")
-
-        # Save preprocessing components
-        joblib.dump(self.scaler, 'models/scaler.joblib')
-        joblib.dump(self.imputer, 'models/imputer.joblib')
-
-        preprocessing_stats = {
-            'training_samples': X_train_balanced.shape[0],
-            'test_samples': X_test_scaled.shape[0],
-            'features': X_train_balanced.shape[1],
-            'classes': num_classes,
-            'class_distribution_before_smote': y_train.value_counts().to_dict(),
-            'class_distribution_after_smote': pd.Series(y_train_balanced).value_counts().to_dict()
-        }
-
-        return (X_train_balanced, X_test_scaled, y_train_balanced, y_test,
-                y_train_categorical, y_test_categorical, preprocessing_stats)
-
-    
+        return X_train, X_test, y_train, y_test, y_multiclass, num_classes, top_features.tolist()

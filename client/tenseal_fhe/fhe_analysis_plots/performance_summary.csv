@@ -1,0 +1,5 @@
+Model,Parameters,Avg_Encryption_Time,Aggregation_Time,Decryption_Time,Total_Time,Throughput_Params_Per_Sec,Time_Per_Param_ms,Computational_Overhead,Communication_Overhead,CPU_Usage_Percent,Memory_Usage_GB,Memory_Per_Param_MB
+Tiny,5839,0.2642,0.307,0.1485,1.5122,3861.35,0.259,15394.36,546.7,319.9,8.77,1.5378
+Small,8463,0.2588,0.2458,0.1853,1.4664,5771.26,0.1733,13821.45,380.58,297.9,8.68,1.0502
+Medium,11087,0.2532,0.2297,0.1614,1.4039,7897.27,0.1266,15334.36,292.0,289.6,7.11,0.6568
+Large,15759,0.276,0.2167,0.1376,1.4584,10805.76,0.0925,8676.49,206.37,325.1,8.81,0.5728

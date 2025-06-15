@@ -35,11 +35,11 @@ path = "/home/umarb/SecureFL/client/DATA"
 script_directory = os.path.dirname(os.path.realpath(__file__))
 save_dir = os.path.join(script_directory, "models")
 
-from he.phe_provider import PHEProvider
-from he.fhe_provider import FHEProvider
+# from he.phe_provider import PHEProvider
+# from he.fhe_provider import FHEProvider
 
-phe_provider = PHEProvider.generate()
-fhe_provider = FHEProvider.generate()
+# phe_provider = PHEProvider.generate()
+# fhe_provider = FHEProvider.generate()
 
 def quantize_to_float(weights):
     """
@@ -51,19 +51,6 @@ def quantize_to_float(weights):
         quantized = np.round(w, decimals=7).astype(np.float32)
         quantized_weights.append(quantized)
     return quantized_weights
-
-def count_decimal_places(weight_array):
-    """
-    Counts decimal places in each weight and returns max decimal places.
-    """
-    decimals = []
-    for w in np.nditer(weight_array):
-        s = f"{float(w):.20f}".rstrip('0')
-        if '.' in s:
-            decimals.append(len(s.split('.')[1]))
-        else:
-            decimals.append(0)
-    return max(decimals, default=0)
 
 def upload_file(file_path, container_name, metadata):
     filename = os.path.basename(file_path)
@@ -213,13 +200,16 @@ def save_model(client_id, model, save_dir):
 
 def main(client_id):
     config = {
-        'data_path_pattern': f"{path}/data_part_*.csv",
-        'max_samples': 5000,
+        'data_path_pattern': f"./DATA/ML-EdgeIIoT-dataset.csv",
+        # 'data_path_pattern': f"{path}/data_part_*.csv",
+        'max_samples': 200000,
         'test_size': 0.2,
-        'epochs': 1,
-        'batch_size': 64,
+        'epochs': 50,
+        'batch_size': 32,
         'random_state': 42,
-        'model_architecture': [256, 128, 128, 64],
+        # 'model_architecture': [256, 128, 128]
+        # 'model_architecture': [256, 128, 64],
+        'model_architecture': [256, 128, 64], # 17 -> 0.84, 0.4
     }
     config['data_path'] = wait_for_csv(config['data_path_pattern'])
     np.random.seed(config['random_state'])
@@ -230,39 +220,42 @@ def main(client_id):
     print(f"SecureFL")
     print(f"Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*70}\n")
-    preprocessor = IoTDataPreprocessor(random_state=config['random_state'])
-    X, y = preprocessor.load_data(config['data_path'])
-    num_examples = len(X)
-    print("Data loaded successfully")
-    print(f"X shape: {X.shape}, y shape: {y.shape}")
-    print(f"X columns: {X.columns.tolist()}")
+
     preprocessing_start_time = time.time()
-    (X_train, X_test, y_train, y_test,
-     y_train_cat, y_test_cat, stats) = preprocessor.preprocess_data(
-        X, y, max_samples=config['max_samples'], test_size=config['test_size']
-    )
+    preprocessor = IoTDataPreprocessor()
+    X_train, X_test, y_train_type, y_test_type, y_type, num_classes, l = preprocessor.preprocess_data(config['data_path'])
     preprocessing_time = time.time() - preprocessing_start_time
     trainer = IoTModelTrainer(random_state=config['random_state'])
     model = trainer.create_model(
         input_dim=X_train.shape[1],
-        num_classes=len(preprocessor.attack_type_map),
+        num_classes=num_classes,
         architecture=config['model_architecture']
     )
+    print("@" * 50)
+    print(X_train.shape[1])
+    print("@" * 50)
     model.save(os.path.join(save_dir, "model_arch.h5"))
     print(f"Model architecture saved at {os.path.join(save_dir, 'model_arch.h5')}")
     print("\nTraining MLP model...")
     use_dp = True
-    l2_norm_clip = 1.5
+    l2_norm_clip = 1.0
     noise_multiplier = 0.7
     microbatches = 1
     if load_model_weights(model, save_dir):
         print("Weights loaded successfully.")
     else:
         print("Failed to load weights. Training from scratch.")
+
+    from tensorflow.keras.utils import to_categorical
+
+    y_train_cat = to_categorical(y_train_type, num_classes=num_classes)
+    y_test_cat = to_categorical(y_test_type, num_classes=num_classes)
+
     history, training_time = trainer.train_model(
         X_train, y_train_cat, X_test, y_test_cat,
         model=model,
         epochs=config['epochs'],
+        # epochs=2,
         batch_size=config['batch_size'],
         verbose=2,
         use_dp=use_dp,
@@ -273,6 +266,9 @@ def main(client_id):
     model = trainer.get_model()
     print("Model training complete.")
     model.summary()
+    model.save('baseline_model.h5')
+
+
     try:
         if history and hasattr(history, 'history') and 'loss' in history.history:
             final_loss = history.history['loss'][-1]
@@ -288,44 +284,143 @@ def main(client_id):
     print("\nEvaluating model on original weights...")
     evaluator = IoTModelEvaluator(preprocessor.attack_type_map)
     eval_results = evaluator.evaluate_model(model, X_test, y_test, y_test_cat)
+    print(f"Original accuracy: {eval_results['accuracy']:.4f}")
     original_loss, original_accuracy = model.evaluate(X_test, y_test_cat, verbose=0)
     print(f"Original Weights - Loss: {original_loss:.4f}, Accuracy: {original_accuracy:.4f}")
 
-    # Quantize to 6-bit float
-    print("\nQuantizing weights to 6-decimal float...")
-    original_weights = model.get_weights()
-    quantized_weights = quantize_to_float(original_weights)
-    model.set_weights(quantized_weights)
-    print("Evaluating model on quantized weights...")
-    eval_results_quantized = evaluator.evaluate_model(model, X_test, y_test, y_test_cat)
-    quantized_loss, quantized_accuracy = model.evaluate(X_test, y_test_cat, verbose=0)
-    print(f"Quantized Weights - Loss: {quantized_loss:.4f}, Accuracy: {quantized_accuracy:.4f}")
+    # ####################################################################################
+    # print("\nApplying quantization-aware training...")
+    # qat_model = tf.keras.models.clone_model(
+    #     model,
+    #     clone_function=lambda layer: tf.keras.layers.experimental.QuantizeConfig(layer)
+    # )
+    # qat_model.compile(
+    #     loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
+    #     optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+    #     metrics=['accuracy']
+    # )
+    # print("\nTraining quantization-aware MLP model...")
+    # use_dp = True
+    # l2_norm_clip = 1.5
+    # noise_multiplier = 0.7
+    # microbatches = 1
 
-    # Encrypt and save quantized weights
-    encryption_type = "fhe"
-    print("\nEncrypting quantized weights...")
-    weights_path, timestamp = save_weights_with_encryption(client_id, model, save_dir, fhe_provider, encryption_type)
-    # upload_file(weights_path, CLIENT_CONTAINER_NAME, metadata)
+    # if load_model_weights(qat_model, save_dir):
+    #     print("Weights loaded successfully for QAT model.")
+    # else:
+    #     print("Failed to load weights. Training QAT model from scratch.")
 
-    # Decrypt and compare
-    print("\nDecrypting weights...")
-    decrypted_weights = load_encrypted_weights(weights_path=weights_path, provider=fhe_provider, encryption_type="fhe")
+    # history, training_time = trainer.train_model(
+    # X_train, y_train_cat, X_test, y_test_cat,
+    # model=qat_model,
+    # epochs=config['epochs'],
+    # batch_size=config['batch_size'],
+    # verbose=2,
+    # use_dp=use_dp,
+    # l2_norm_clip=l2_norm_clip,
+    # noise_multiplier=noise_multiplier,
+    # microbatches=microbatches
+    # )
 
-    # Compare original (quantized) and decrypted weights
-    print("\nComparing quantized and decrypted weights...")
-    for i, (quantized, decrypted) in enumerate(zip(quantized_weights, decrypted_weights)):
-        quantized_np = quantized.numpy() if isinstance(quantized, tf.Tensor) else quantized
-        decrypted_np = decrypted.numpy() if isinstance(decrypted, tf.Tensor) else decrypted
-        if np.allclose(quantized_np, decrypted_np, rtol=1e-5, atol=1e-6):
-            print(f"Tensor {i+1} decrypted successfully and matches quantized weights.")
-        else:
-            diff = np.abs(quantized_np - decrypted_np)
-            max_diff = np.max(diff)
-            idx = np.unravel_index(np.argmax(diff), diff.shape)
-            print(f"Tensor {i+1} mismatch after decryption.")
-            print(f"Max difference: {max_diff}")
-            print(f"Quantized value at max difference: {quantized_np[idx]}")
-            print(f"Decrypted value at max difference: {decrypted_np[idx]}")
+    # print("Quantization-aware training complete.")
+    # qat_model.summary()
+
+    # ######################################################################################
+
+    def evaluate_tflite_model(tflite_model, X_test, y_test_cat):
+        interpreter = tf.lite.Interpreter(model_content=tflite_model)
+        interpreter.allocate_tensors()
+
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+
+        correct_predictions = 0
+        total_loss = 0.0
+        loss_fn = tf.keras.losses.CategoricalCrossentropy()
+
+        for i in range(len(X_test)):
+            input_data = X_test[i:i+1].astype(np.float32)  # Shape: (1, input_dim)
+            interpreter.set_tensor(input_details[0]['index'], input_data)
+            interpreter.invoke()
+            output_data = interpreter.get_tensor(output_details[0]['index'])
+            predicted_class = np.argmax(output_data[0])
+            true_class = np.argmax(y_test_cat[i])
+            if predicted_class == true_class:
+                correct_predictions += 1
+            true_label = y_test_cat[i:i+1]
+            loss = loss_fn(true_label, output_data).numpy()
+            total_loss += loss
+
+        accuracy = correct_predictions / len(X_test)
+        average_loss = total_loss / len(X_test)
+        return {'accuracy': accuracy, 'loss': average_loss}
+
+    # eval_results = trainer.evaluate_model(qat_model, X_test, y_test, y_test_cat)
+    # print(f"Quantization-Aware Model - Accuracy: {eval_results['accuracy']:.4f}")
+    # qat_loss, qat_accuracy = qat_model.evaluate(X_test, y_test_cat, verbose=0)
+    # print(f"Quantization-Aware Model - Loss: {qat_loss:.4f}, Accuracy: {qat_accuracy:.4f}")
+
+    # # Step 5: Convert to TFLite with full integer quantization
+    # print("\nConverting to TFLite with full integer quantization...")
+    # def representative_dataset():
+    #     for i in range(100):  # Use a small subset of data
+    #         yield [X_test[i:i+1].astype(np.float32)]  # Shape: (1, input_dim)
+
+    # converter = tf.lite.TFLiteConverter.from_keras_model(qat_model)
+    # converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    # converter.inference_input_type = tf.int8  # INT8 inputs
+    # converter.inference_output_type = tf.int8  # INT8 outputs
+    # converter.representative_dataset = representative_dataset
+
+    # try:
+    #     tflite_model = converter.convert()
+    #     with open(os.path.join(save_dir, 'quantized_qat_model.tflite'), 'wb') as f:
+    #         f.write(tflite_model)
+    #     print(f"Quantized TFLite model saved at {os.path.join(save_dir, 'quantized_qat_model.tflite')}")
+    # except Exception as e:
+    #     print(f"Error during TFLite conversion: {e}")
+
+    # # Step 6: Evaluate the quantized TFLite model
+    # tflite_eval_results = evaluate_tflite_model(tflite_model, X_test, y_test_cat)
+    # print(f"Quantized TFLite Model - Accuracy: {tflite_eval_results['accuracy']:.4f}")
+    # print(f"Quantized TFLite Model - Loss: {tflite_eval_results['loss']:.4f}")
+
+    #############################################################################################
+    # Step 2: Convert to TensorFlow Lite with weight-only quantization
+    converter = tf.lite.TFLiteConverter.from_keras_model(model)
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    # converter.inference_input_type = tf.float32  # Keep inputs as float32
+    # converter.inference_output_type = tf.float32  # Keep outputs as float32
+    
+    converter.target_spec.supported_ops = [tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+    converter.target_spec.supported_types = [tf.int8]
+    converter.inference_input_type = tf.int8
+    converter.inference_output_type = tf.int8
+    def representative_data_gen():
+        for i in range(100):  # Use 100 samples; adjust as needed
+            # If X_train is a NumPy array
+            sample = X_train[i]
+            # Add batch dimension if needed
+            sample = sample[np.newaxis, ...]  # Shape: (1, ...) 
+            yield [sample.astype(np.float32)]
+        
+    converter.representative_dataset = representative_data_gen
+
+    # Step 3: Convert and save the quantized model
+    try:
+        tflite_model = converter.convert()
+        with open('quantized_weights_model.tflite', 'wb') as f:
+            f.write(tflite_model)
+        print("Quantized model saved as 'quantized_weights_model.tflite'")
+    except Exception as e:
+        print(f"Error during conversion: {e}")
+
+    # Step 4: Evaluate the quantized TFLite model
+    tflite_eval_results = evaluate_tflite_model(tflite_model, X_test, y_test_cat)
+    print(f"Quantized Model - Accuracy: {tflite_eval_results['accuracy']:.4f}")
+    print(f"Quantized Model - Loss: {tflite_eval_results['loss']:.4f}")
+    ######################################################################################
 
     model_info = {
         'training_time': training_time,
@@ -337,10 +432,26 @@ def main(client_id):
     print(f"SecureFL - Run Complete")
     print(f"Ended at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"Original accuracy: {eval_results['accuracy']:.4f}")
-    print(f"Quantized accuracy: {eval_results_quantized['accuracy']:.4f}")
+    print(f"Original accuracy: {original_loss:.4f}")
+    print(f"Quantized Model - Accuracy: {tflite_eval_results['accuracy']:.4f}")
+    print(f"Quantized Model - Loss: {tflite_eval_results['loss']:.4f}")
     print(f"Preprocessing time: {preprocessing_time:.2f} seconds")
     print(f"Training time: {training_time:.2f} seconds")
     print(f"{'='*70}\n")
+
+    def get_file_size(filepath):
+        size_bytes = os.path.getsize(filepath)
+        size_mb = size_bytes / (1024 * 1024)
+        return round(size_mb, 2)
+
+    # For both models
+    baseline_size = get_file_size('baseline_model.h5')
+    quantized_size = get_file_size('quantized_weights_model.tflite')
+
+    print(f"Baseline Model Size: {baseline_size} MB")
+    print(f"Quantized Model Size: {quantized_size} MB")
+
+    print(f"Compression Ratio: {baseline_size / quantized_size:.2f}x")
 
 if __name__ == "__main__":
     load_dotenv(dotenv_path='.env.client')

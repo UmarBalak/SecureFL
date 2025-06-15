@@ -40,7 +40,9 @@ X, y = preprocessor.load_data(csv_file)
 # ----------------- Synthetic Weight Generation --------------------
 def generate_weights():
     input_dim = X_train.shape[1]
+    print(f"Input dimension: {input_dim}")
     num_classes = y_train_cat.shape[1]
+    print(f"Number of classes: {num_classes}")
     for i in range(NUM_SYNTHETIC_MODELS):
         model = IoTModel().create_mlp_model(input_dim, num_classes)
         indices = np.random.choice(len(X_train), size=1000)

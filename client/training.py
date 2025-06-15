@@ -45,6 +45,27 @@ class IoTModelTrainer:
         """
         self.model = self.model_builder.create_mlp_model(input_dim, num_classes, architecture)
         return self.model
+    
+    def create_quantized_model(self, input_dim, num_classes, architecture=None):
+        """
+        Create a new MLP model
+
+        Parameters:
+        -----------
+        input_dim : int
+            Number of input features
+        num_classes : int
+            Number of output classes
+        architecture : list of int, optional
+            List specifying the number of units in each hidden layer
+
+        Returns:
+        --------
+        model : tf.keras.models.Sequential
+            Compiled MLP model
+        """
+        self.model = self.model_builder.create_quantized_mlp_model(input_dim, num_classes, architecture)
+        return self.model
 
     def train_model(self, X_train, y_train_cat, X_test, y_test_cat,
                 model, epochs=50, batch_size=64, verbose=2,
@@ -301,6 +322,7 @@ class IoTModelTrainer:
                 validation_data=(X_test, y_test_cat),
                 epochs=epochs,
                 batch_size=batch_size,
+                # callbacks=[model_checkpoint, lr_scheduler, reduce_lr],
                 callbacks=[early_stopping, model_checkpoint, lr_scheduler, reduce_lr],
                 verbose=verbose
             )

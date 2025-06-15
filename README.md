@@ -18,3 +18,7 @@ This project aims to redefine secure collaboration in FL by combining advanced c
 **Train together, stay private.**
 
 SecureFL ensures zero raw data exposure, even under adversarial conditions.
+
+### Tech Stack
+
+`Python 3.10.17`
