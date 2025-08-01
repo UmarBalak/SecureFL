@@ -2,30 +2,43 @@ import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, Dropout, BatchNormalization, LayerNormalization, LeakyReLU
 from tensorflow.keras.regularizers import l2
+
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, BatchNormalization
+from tensorflow.keras.regularizers import l1_l2
+
 class IoTModel:
     def __init__(self):
         """Initialize the IoT model class"""
         pass
 
     def create_mlp_model(self, input_dim, num_classes, architecture=[128, 128, 64]):
+        """
+        Create an MLP model with comprehensive regularization techniques.
+        
+        Returns:
+        --------
+        model : tf.keras.models.Sequential
+            Compiled model with regularization
+        """
         model = Sequential()
-        model.add(Dense(architecture[0], input_dim=input_dim, kernel_regularizer=l2(0.001)))
-        model.add(LayerNormalization())
-        model.add(tf.keras.layers.ReLU())
+        
+        model.add(Dense(architecture[0], input_dim=input_dim,
+                        kernel_regularizer=l2(0.0005)))
+        model.add(LeakyReLU(alpha=0.1)) 
+        # model.add(Dropout(dropout_rate_for_1)) 
+        model.add(BatchNormalization())  
 
-        for units in architecture[1:]:
-            model.add(Dense(units, kernel_regularizer=l2(0.001)))
-            model.add(LayerNormalization())
-            model.add(tf.keras.layers.ReLU())
-
+        for i in range(1, len(architecture)):
+            model.add(Dense(architecture[i],
+                            kernel_regularizer=l2(0.0005)))
+            model.add(LeakyReLU(alpha=0.1)) 
+            # model.add(Dropout(dropout_rate_for_all))  
+            model.add(BatchNormalization())
+        
         model.add(Dense(num_classes, activation='softmax'))
-
-        model.compile(
-            loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.05),
-            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
-            metrics=['accuracy']
-        )
-
+        
         return model
 
     
@@ -39,7 +52,7 @@ class IoTModel:
 
         model.compile(
             loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
-            optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3),
+            optimizer=tf.keras.optimizers.Adam(learning_rate=0.01),
             metrics=['accuracy']
         )
 
