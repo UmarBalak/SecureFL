@@ -2,9 +2,11 @@ import time
 import os
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint, LearningRateScheduler, ReduceLROnPlateau
+from tensorflow.keras.callbacks import Callback, EarlyStopping, ModelCheckpoint, ReduceLROnPlateau
 from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import DPKerasAdamOptimizer
-from .model import IoTModel
+import dp_accounting
+import psutil
+from model import IoTModel
 
 class IoTModelTrainer:
     def __init__(self, random_state=42):
@@ -25,7 +27,7 @@ class IoTModelTrainer:
         np.random.seed(self.random_state)
         tf.random.set_seed(self.random_state)
 
-    def create_model(self, input_dim, num_classes, architecture=None):
+    def create_model(self, input_dim, num_classes, architecture=None, dropout_rate_for_1=0.25, dropout_rate_for_all=0.2):
         """
         Create a new MLP model
 
@@ -37,6 +39,10 @@ class IoTModelTrainer:
             Number of output classes
         architecture : list of int, optional
             List specifying the number of units in each hidden layer
+        dropout_rate_for_1 : float
+            Dropout rate for the first hidden layer
+        dropout_rate_for_all : float
+            Dropout rate for subsequent hidden layers
 
         Returns:
         --------
@@ -45,31 +51,55 @@ class IoTModelTrainer:
         """
         self.model = self.model_builder.create_mlp_model(input_dim, num_classes, architecture)
         return self.model
-    
-    def create_quantized_model(self, input_dim, num_classes, architecture=None):
+
+    def compute_epsilon(self, num_samples, batch_size, noise_multiplier, epochs_list, delta):
         """
-        Create a new MLP model
+        Compute epsilon for a list of epoch checkpoints.
 
         Parameters:
         -----------
-        input_dim : int
-            Number of input features
-        num_classes : int
-            Number of output classes
-        architecture : list of int, optional
-            List specifying the number of units in each hidden layer
+        num_samples : int
+            Number of training samples
+        batch_size : int
+            Batch size
+        noise_multiplier : float
+            Noise multiplier for DP-SGD
+        epochs_list : list
+            List of epoch checkpoints
+        delta : float
+            Delta value for DP
 
         Returns:
         --------
-        model : tf.keras.models.Sequential
-            Compiled MLP model
+        epsilon_dict : dict
+            Dictionary mapping epochs to epsilon values
         """
-        self.model = self.model_builder.create_quantized_mlp_model(input_dim, num_classes, architecture)
-        return self.model
+        epsilon_dict = {}
+        if noise_multiplier == 0.0:
+            return {e: float("inf") for e in epochs_list}
+        
+        sampling_probability = batch_size / num_samples
+        orders = [1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64))
+        
+        for e in epochs_list:
+            accountant = dp_accounting.rdp.RdpAccountant(orders)
+            steps = e * num_samples // batch_size
+            event = dp_accounting.SelfComposedDpEvent(
+                dp_accounting.PoissonSampledDpEvent(
+                    sampling_probability,
+                    dp_accounting.GaussianDpEvent(noise_multiplier)
+                ),
+                steps
+            )
+            accountant.compose(event)
+            epsilon_dict[e] = accountant.get_epsilon(target_delta=delta)
+        
+        return epsilon_dict
 
     def train_model(self, X_train, y_train_cat, X_test, y_test_cat,
-                model, epochs=50, batch_size=64, verbose=2,
-                use_dp=True, l2_norm_clip=1.0, noise_multiplier=1.2, microbatches=1):
+                    model, epochs=50, batch_size=64, verbose=2,
+                    use_dp=True, l2_norm_clip=1.0, noise_multiplier=1.2, microbatches=1,
+                    callbacks=None, epoch_checkpoints=None):
         """
         Train the MLP model with optional differential privacy.
 
@@ -99,37 +129,48 @@ class IoTModelTrainer:
             Noise multiplier for DP-SGD.
         microbatches : int
             Number of microbatches for DP-SGD.
+        callbacks : list
+            List of Keras callbacks.
+        epoch_checkpoints : list
+            List of epoch checkpoints for epsilon and timing (e.g., [30, 50, 80, 100]).
 
         Returns:
         --------
         history : tf.keras.callbacks.History
             Training history.
         training_time : float
-            Time taken for training in seconds.
+            Time taken for model.fit in seconds.
+        noise_multiplier : float
+            Noise multiplier used.
+        l2_norm_clip : float
+            L2 norm clip used.
+        microbatches : int
+        epsilon_dict : dict
+            Epsilon values for each checkpoint epoch.
+        delta : float
+            Delta value used.
+        epoch_times : list
+            Cumulative time to each epoch end.
+        memory_samples : list
+            Memory usage (RSS in bytes) at the end of each epoch.
         """
         print("\nTraining MLP model...")
-
         self.model = model
-
-        # Calculate the appropriate number of microbatches
         num_samples = len(X_train)
+        epoch_checkpoints = epoch_checkpoints or [epochs]
+        callbacks = callbacks or []
+
         if use_dp and DPKerasAdamOptimizer is None:
-            print("DPKerasAdamOptimizer is unavailable. Falling back to standard Adam optimizer.")
-            use_dp = False  # Disable DP if the optimizer is not available
+            print("DPKerasAdamOptimizer unavailable. Falling back to standard Adam.")
+            use_dp = False
 
         if use_dp:
-            # If microbatches > batch_size, reduce it to batch_size
             if microbatches > batch_size:
                 microbatches = batch_size
-            
-            # Ensure batch_size is divisible by microbatches
-            if batch_size % microbatches != 0:
-                # Find the largest divisor of batch_size that is <= microbatches
-                for i in range(microbatches, 0, -1):
-                    if batch_size % i == 0:
-                        microbatches = i
-                        break
-            
+            for i in range(microbatches, 0, -1):
+                if batch_size % i == 0:
+                    microbatches = i
+                    break
             print(f"Using {microbatches} microbatches with batch size {batch_size}")
             
             optimizer = DPKerasAdamOptimizer(
@@ -139,264 +180,104 @@ class IoTModelTrainer:
                 learning_rate=0.001
             )
             
-            # Calculate steps for privacy accounting
-            steps_per_epoch = num_samples // batch_size
-            total_steps = steps_per_epoch * epochs
+            delta = 1.0 / num_samples
+            epsilon_dict = self.compute_epsilon(num_samples, batch_size, noise_multiplier, epoch_checkpoints, delta)
             
-            # Import required packages - attempt multiple import paths to handle different versions
-            import importlib
-            
-            try:
-                # Try to import using current tensorflow_privacy package structure
-                try:
-                    # from tensorflow_privacy.privacy.analysis import compute_dp_sgd_privacy
-                    
-                    # Calculate privacy using the compute_dp_sgd_privacy function
-                    # which internally uses the RDP accountant
-                    sampling_rate = batch_size / num_samples
-                    delta = 1.0 / num_samples
-                    
-                    # epsilon = compute_dp_sgd_privacy.compute_dp_sgd_privacy(
-                    #     n=num_samples,
-                    #     batch_size=batch_size,
-                    #     noise_multiplier=noise_multiplier,
-                    #     epochs=epochs,
-                    #     delta=delta
-                    # )[0]
-                    import dp_accounting
-
-                    def compute_epsilon(
-                        num_samples: int,
-                        batch_size: int,
-                        noise_multiplier: float,
-                        epochs: int,
-                        delta: float
-                    ) -> float:
-                        if noise_multiplier == 0.0:
-                            return float("inf")
-                        steps = epochs * num_samples // batch_size
-                        sampling_probability = batch_size / num_samples
-                        orders = [1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64))
-                        accountant = dp_accounting.rdp.RdpAccountant(orders)
-                        event = dp_accounting.SelfComposedDpEvent(
-                            dp_accounting.PoissonSampledDpEvent(
-                                sampling_probability,
-                                dp_accounting.GaussianDpEvent(noise_multiplier)
-                            ),
-                            steps
-                        )
-                        accountant.compose(event)
-                        return accountant.get_epsilon(target_delta=delta)
-
-                    # Usage:
-                    epsilon = compute_epsilon(
-                        num_samples=num_samples,
-                        batch_size=batch_size,
-                        noise_multiplier=noise_multiplier,
-                        epochs=epochs,
-                        delta=delta
-                    )
-                    print(f"Epsilon: {epsilon:.4f}")
-
-                                        
-                except ImportError:
-                    # Try alternative import paths for different tensorflow_privacy versions
-                    try:
-                        # For newer versions
-                        from tensorflow_privacy.privacy.analysis.rdp_accountant import compute_rdp
-                        from tensorflow_privacy.privacy.analysis.rdp_accountant import get_privacy_spent
-                    except ImportError:
-                        # For older versions
-                        from tensorflow_privacy.analysis.rdp_accountant import compute_rdp
-                        from tensorflow_privacy.analysis.rdp_accountant import get_privacy_spent
-                    
-                    # Calculate privacy using RDP accountant
-                    # Sampling rate: batch_size / dataset_size
-                    sampling_rate = batch_size / num_samples
-                    
-                    # RDP orders
-                    orders = [1 + x / 10.0 for x in range(1, 100)] + list(range(12, 64))
-                    
-                    # Compute RDP for given parameters
-                    rdp = compute_rdp(
-                        q=sampling_rate,
-                        noise_multiplier=noise_multiplier,
-                        steps=total_steps,
-                        orders=orders
-                    )
-                    
-                    # Convert RDP to (ε, δ)-DP
-                    # Common delta value is 1/N where N is the training dataset size
-                    delta = 1.0 / num_samples
-                    epsilon, opt_order = get_privacy_spent(orders, rdp, target_delta=delta)
-                
-                print(f"Using DP-SGD Optimizer with:")
-                print(f" - L2 norm clip: {l2_norm_clip}")
-                print(f" - Noise multiplier: {noise_multiplier}")
-                print(f" - Microbatches: {microbatches}")
-                print(f" - Sampling rate: {sampling_rate:.6f}")
-                print(f" - Training steps: {total_steps} ({epochs} epochs)")
-                print(f" - DP guarantee: ε = {epsilon:.2f} at δ = {delta:.2e}")
-            except Exception as e:
-                print(f"Could not use TensorFlow Privacy modules for precise privacy accounting: {str(e)}")
-                print("Using a simplified estimate (less accurate):")
-                
-                # Check if numpy is available
-                try:
-                    import numpy as np
-                    # Simplified estimation as fallback
-                    sampling_rate = batch_size / num_samples
-                    delta = 1.0 / num_samples
-                    # This is a simplified upper bound estimate
-                    approx_epsilon = noise_multiplier * np.sqrt(2 * total_steps * np.log(1/delta))
-                    print(f" - Approximate ε: {approx_epsilon:.2f} (rough estimate)")
-                    print(f" - δ = {delta:.2e} (1/N)")
-                except ImportError:
-                    # Even more basic calculation if numpy isn't available
-                    sampling_rate = batch_size / num_samples
-                    delta = 1.0 / num_samples
-                    import math
-                    approx_epsilon = noise_multiplier * math.sqrt(2 * total_steps * math.log(num_samples))
-                    print(f" - Very rough ε estimate: {approx_epsilon:.2f}")
-                    print(f" - δ = {delta:.2e} (1/N)")
-                    
-                print("Note: This is an approximation. For accurate accounting, install tensorflow-privacy.")
+            for e, eps in epsilon_dict.items():
+                print(f"DP guarantee at epoch {e}: ε = {eps:.2f}, δ = {delta:.2e}")
         else:
             optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
-            print("Using standard Adam optimizer (no differential privacy)")
+            delta = 1.0 / num_samples
+            epsilon_dict = {e: float("inf") for e in epoch_checkpoints}
+            print("Using standard Adam optimizer (no DP)")
 
-        # Compile with selected optimizer
-        self.model.compile(optimizer=optimizer,
-                        loss='categorical_crossentropy',
-                        metrics=['accuracy'])
-        
-        # Define a custom learning rate scheduler function
-        def lr_schedule(epoch, lr):
-            """
-            Custom learning rate schedule:
-            - Reduce learning rate at specific epochs.
-            """
-            if epoch < 10:
-                return lr  # Keep the initial learning rate
-            elif epoch < 20:
-                return lr * 0.5  # Reduce by half after 10 epochs
-            elif epoch < 30:
-                return lr * 0.1  # Reduce further after 20 epochs
-            else:
-                return lr * 0.01  # Minimal learning rate after 30 epochs
-
-
-        # Callbacks
-        early_stopping = EarlyStopping(
-            monitor='val_loss', 
-            patience=10, 
-            restore_best_weights=True, 
-            verbose=1
-        )
-        
-        model_checkpoint = ModelCheckpoint(
-            filepath='models/best_mlp_model.h5', 
-            monitor='val_loss', 
-            save_best_only=True,
-            save_weights_only=True,
-            verbose=1
+        self.model.compile(
+            optimizer=optimizer,
+            loss='categorical_crossentropy',
+            metrics=['accuracy']
         )
 
-        # Add the learning rate scheduler callback
-        lr_scheduler = LearningRateScheduler(lr_schedule, verbose=1)
-
-        # Optionally, use ReduceLROnPlateau for dynamic adjustment
-        reduce_lr = ReduceLROnPlateau(
-            monitor='val_loss',
-            factor=0.5,  # Reduce learning rate by half
-            patience=5,  # Wait for 5 epochs of no improvement
-            min_lr=1e-6,  # Minimum learning rate
-            verbose=1
-        )
+        default_callbacks = [
+            ModelCheckpoint(
+                filepath='models/best_mlp_model.h5',
+                monitor='val_loss',
+                save_best_only=True,
+                save_weights_only=True,
+                verbose=1
+            ),
+            ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.2,
+                patience=5,
+                min_lr=1e-5,
+                verbose=1
+            )
+        ]
+        all_callbacks = default_callbacks + callbacks
 
         start_time = time.time()
-        
+        mem_start = psutil.Process().memory_info().rss
         try:
             self.history = self.model.fit(
                 X_train, y_train_cat,
                 validation_data=(X_test, y_test_cat),
                 epochs=epochs,
                 batch_size=batch_size,
-                # callbacks=[model_checkpoint, lr_scheduler, reduce_lr],
-                callbacks=[early_stopping, model_checkpoint, lr_scheduler, reduce_lr],
+                callbacks=all_callbacks,
                 verbose=verbose
             )
             training_success = True
         except Exception as e:
-            print(f"Training failed with error: {str(e)}")
-            print("Trying again with simpler DP configuration...")
+            print(f"Training failed: {str(e)}")
+            print("Trying simpler DP configuration...")
             
-            # Fallback to simpler configuration
             if use_dp:
                 optimizer = DPKerasAdamOptimizer(
                     l2_norm_clip=l2_norm_clip,
                     noise_multiplier=noise_multiplier,
-                    num_microbatches=1,  # Simplest case: one microbatch
+                    num_microbatches=1,
                     learning_rate=0.001
                 )
-                
                 self.model.compile(
                     optimizer=optimizer,
                     loss='categorical_crossentropy',
                     metrics=['accuracy']
                 )
-                
                 try:
                     self.history = self.model.fit(
                         X_train, y_train_cat,
                         validation_data=(X_test, y_test_cat),
                         epochs=epochs,
                         batch_size=batch_size,
-                        callbacks=[early_stopping, model_checkpoint],
+                        callbacks=all_callbacks,
                         verbose=verbose
                     )
                     training_success = True
-                    print("Training successful with simplified DP configuration (1 microbatch)")
                 except Exception as e2:
-                    print(f"Training failed again with error: {str(e2)}")
-                    print("Falling back to standard optimizer without DP")
-                    
-                    # Final fallback to non-DP optimizer
+                    print(f"Training failed again: {str(e2)}")
+                    print("Falling back to non-DP optimizer")
                     optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)
                     self.model.compile(
                         optimizer=optimizer,
                         loss='categorical_crossentropy',
                         metrics=['accuracy']
                     )
-                    
                     self.history = self.model.fit(
                         X_train, y_train_cat,
                         validation_data=(X_test, y_test_cat),
                         epochs=epochs,
                         batch_size=batch_size,
-                        callbacks=[early_stopping, model_checkpoint],
+                        callbacks=all_callbacks,
                         verbose=verbose
                     )
                     training_success = True
-                    print("Training successful with standard optimizer (no DP)")
-            
+        
         training_time = time.time() - start_time
-
         print(f"Model training completed in {training_time:.2f} seconds")
-            
-        try:
-            self.model.save_weights('models/weights.h5')
-            print("Model weights saved successfully")
-            
-            # Also save to federated_models directory
-            os.makedirs('federated_models', exist_ok=True)
-            self.model.save_weights('federated_models/weights.h5')
-            print("Model weights saved to federated_models directory")
-        except Exception as e:
-            print(f"Error saving weights: {str(e)}")
 
-        return self.history, training_time
-
+        return self.history, training_time, noise_multiplier, l2_norm_clip, microbatches, epsilon_dict, delta, mem_start
+    
+    
     def get_model(self):
         """
         Get the trained model
