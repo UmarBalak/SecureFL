@@ -42,7 +42,7 @@ PATH_MODE = get_path_mode()
 if PATH_MODE == "colab":
     DATASET_PATH = "/content/drive/MyDrive/SecureFL/SecureFL_client/ML-EdgeIIoT-dataset.csv"
     DOTENV_PATH = "/content/drive/MyDrive/SecureFL/SecureFL_client/.env.client"
-    SAVE_DIR = "/content/drive/MyDrive/ae_training_dataset"
+    SAVE_DIR = "/content/drive/MyDrive/SecureFL/mlp_models_for_ae"
 else:
     DATASET_PATH = "./DATA/ML-EdgeIIoT-dataset.csv"
     DOTENV_PATH = ".env.client"
@@ -69,7 +69,7 @@ except Exception as e:
 # path = "/home/umarb/SecureFL/client/DATA"
 # script_directory = os.path.dirname(os.path.realpath(__file__))
 # save_dir = os.path.join(script_directory, "models")
-# save_dir = "/content/drive/MyDrive/ae_training_dataset"
+# save_dir = "/content/drive/MyDrive/SecureFL/mlp_models_for_ae"
 
 from sklearn.model_selection import train_test_split
 import random
@@ -200,7 +200,7 @@ def main(client_id, model_num, epochs, X_train, X_test, y_train, y_test, y_type,
 #         import re
 
 #         # Path to saved models
-#         model_dir = "/content/drive/MyDrive/ae_training_dataset"
+#         model_dir = "/content/drive/MyDrive/SecureFL/mlp_models_for_ae"
 
 #         # Regex to match filenames like weights23.h5
 #         pattern = re.compile(r"weights(\d+)\.h5")
