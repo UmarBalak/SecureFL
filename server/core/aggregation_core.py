@@ -78,16 +78,16 @@ async def aggregate_weights_core(db: Session):
             filename = aggregation_service.get_versioned_filename(runtime_state.latest_version)
             logging.info(f"Preparing to save aggregated weights as: {filename}")
             
-            encrypted_weights_list = [weights for _, weights in weights_list_with_ids]
-            logging.info(f"Aggregating weights from {len(encrypted_weights_list)} clients")
-            logging.info(f"Encrypted weight shapes: {[len(weights) for weights in encrypted_weights_list]}")
+            weights_list = [weights for _, weights in weights_list_with_ids]
+            logging.info(f"Aggregating weights from {len(weights_list)} clients")
+            logging.info(f"Weight shapes: {[len(weights) for weights in weights_list]}")
             
-            avg_encrypted_weights = aggregation_service.federated_averaging(
-                encrypted_weights_list, num_examples_list
+            avg_weights = aggregation_service.federated_averaging(
+                weights_list, num_examples_list
             )
             logging.info("Aggregation completed successfully.")
             
-            if not avg_encrypted_weights or not blob_service.save_weights_to_blob(avg_encrypted_weights, filename):
+            if not avg_weights or not blob_service.save_weights_to_blob(avg_weights, filename):
                 logging.critical("Failed to save aggregated weights to blob")
                 raise HTTPException(status_code=500, detail="Failed to save aggregated weights")
             
@@ -97,7 +97,7 @@ async def aggregate_weights_core(db: Session):
             contributing_client_ids = [id for id, _ in weights_list_with_ids]
             new_model = GlobalModel(
                 version=runtime_state.latest_version,
-                num_clients_contributed=len(encrypted_weights_list),
+                num_clients_contributed=len(weights_list),
                 client_ids=",".join(contributing_client_ids)
             )
             new_db.add(new_model)
@@ -115,7 +115,7 @@ async def aggregate_weights_core(db: Session):
             return {
                 "status": "success",
                 "message": f"Aggregated weights saved as {filename}",
-                "num_clients": len(encrypted_weights_list)
+                "num_clients": len(weights_list)
             }
         except SQLAlchemyError as db_error:
             logging.error(f"Database error during aggregation: {db_error}")

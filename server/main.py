@@ -13,7 +13,6 @@ from apscheduler.triggers.cron import CronTrigger
 # Local imports
 from config.settings import settings
 from models.database import get_db, Client, GlobalModel, GlobalAggregation, SessionLocal
-from services.fhe_service import fhe_service
 from services.websocket_service import connection_manager
 from utils.runtime_state import runtime_state
 from core.aggregation_core import aggregate_weights_core
@@ -24,9 +23,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[logging.FileHandler("server.log"), logging.StreamHandler()]
 )
-
-# Initialize FHE provider at startup
-fhe_service.initialize()
 
 # FastAPI app
 from contextlib import asynccontextmanager
@@ -227,7 +223,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str, db: Session =
                         raise
         
         logging.info(f"Cleanup completed for client {client_id}.")
-
 
 # Production scheduler for reliable task execution
 import threading

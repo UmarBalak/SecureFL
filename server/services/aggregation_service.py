@@ -1,11 +1,10 @@
 import logging
 import time
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import OperationalError
 from models.database import GlobalAggregation, GlobalModel, Client
-from services.fhe_service import fhe_service
 
 class AggregationService:
     @staticmethod
@@ -38,35 +37,42 @@ class AggregationService:
     
     @staticmethod
     def federated_averaging(
-        encrypted_weights_list: List[List[Tuple[List[Dict[str, Any]], Tuple]]], 
+        weights_list: List[List[Any]], 
         num_examples_list: List[int]
-    ) -> List[Dict[str, Any]]:
-        num_clients = len(encrypted_weights_list)
+    ) -> List[Any]:
+        num_clients = len(weights_list)
         if num_clients == 0:
-            logging.error("No encrypted weights provided for aggregation.")
+            logging.error("No weights provided for aggregation.")
             return None
         
         # Validate input lengths
-        if len(encrypted_weights_list) != len(num_examples_list):
+        if len(weights_list) != len(num_examples_list):
             logging.error("Mismatched lengths: weights and examples")
             return None
         
         # Validate tensor shapes
-        if encrypted_weights_list:
-            expected_length = len(encrypted_weights_list[0][0])
-            for weights, _ in encrypted_weights_list:
+        if weights_list:
+            expected_length = len(weights_list[0])
+            for weights in weights_list:
                 if len(weights) != expected_length:
-                    logging.error("Inconsistent tensor lengths in encrypted weights")
+                    logging.error("Inconsistent tensor lengths in weights")
                     return None
         
         # Simple FedAvg: equal weights for all clients
         weights = np.array([1.0 / num_clients] * num_clients)
         logging.info(f"Performing FedAvg with {num_clients} clients, each with weight {1.0 / num_clients}")
         
-        return fhe_service.provider.secure_weighted_sum(encrypted_weights_list, weights)
+        # Perform weighted average using NumPy
+        avg_weights = []
+        for layer_idx in range(len(weights_list[0])):
+            layer_weights = np.array([client_weights[layer_idx] for client_weights in weights_list])
+            weighted_sum = np.average(layer_weights, axis=0, weights=weights)
+            avg_weights.append(weighted_sum)
+        
+        return avg_weights
     
     @staticmethod
     def get_versioned_filename(version: int, prefix="g", extension=".pkl"):
-        return f"{prefix}{version}.{extension}"
+        return f"{prefix}{version}{extension}"
 
 aggregation_service = AggregationService()

@@ -71,7 +71,7 @@ class BlobService:
                             temp_path = temp_file.name
                         
                         with open(temp_path, "rb") as f:
-                            encrypted_weights = pickle.load(f)
+                            weights = pickle.load(f)
                         
                         blob_metadata = blob_client.get_blob_properties().metadata
                         if blob_metadata:
@@ -86,7 +86,7 @@ class BlobService:
                             os.unlink(temp_path)
                             temp_path = None
                         
-                        weights_list.append((client_id, encrypted_weights))
+                        weights_list.append((client_id, weights))
                         new_last_aggregation_timestamp = max(new_last_aggregation_timestamp, timestamp_int)
                 else:
                     logging.warning(f"Blob name does not match pattern: {blob.name}")
@@ -105,13 +105,13 @@ class BlobService:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
     
-    def save_weights_to_blob(self, encrypted_weights: List[List[Dict[str, Any]]], filename: str) -> bool:
+    def save_weights_to_blob(self, weights: List[List[Dict[str, Any]]], filename: str) -> bool:
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix='.pkl', delete=False) as temp_file:
                 temp_path = temp_file.name
                 with open(temp_path, "wb") as f:
-                    pickle.dump(encrypted_weights, f)
+                    pickle.dump(weights, f)
             
             blob_client = self.server_blob_service.get_blob_client(
                 container=settings.SERVER_CONTAINER_NAME, 
