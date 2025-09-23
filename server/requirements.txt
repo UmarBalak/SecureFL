@@ -22,11 +22,7 @@ scipy==1.15.3
 six==1.17.0
 SQLAlchemy==2.0.41
 starlette==0.46.2
-tensorboard==2.14.1
-tensorboard-data-server==0.7.2
 tensorflow==2.14.1
-tensorflow-estimator==2.14.0
-tensorflow-io-gcs-filesystem==0.37.1
 torch==1.13.1
 typing_extensions==4.13.2
 tzlocal==5.3.1
