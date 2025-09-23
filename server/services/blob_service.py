@@ -6,7 +6,7 @@ import re
 from typing import List, Optional, Tuple, Any, Dict
 from azure.storage.blob import BlobServiceClient, ContainerClient
 from tensorflow import keras
-from config.settings import settings
+from .config.settings import settings
 
 class BlobService:
     def __init__(self):
