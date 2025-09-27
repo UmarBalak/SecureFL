@@ -4,6 +4,6 @@
    1. `global_train.csv` -> `60%`
    2. `clients.csv` -> `30%` (for clients simulation)
    3. `global_test.csv` -> `10%` (test dataset for all global models)
-4. `global_train.csv` will be used to train the initial global model (without validation dataset)
+4. `global_train.csv` will be used to train the initial global model (with validation dataset)
 5. Split global_train.csv into `train.csv` and `val.csv` for hyperparameter tuning (for example: architecture selection, epochs, ...)
-6. Train final initial model (g0) on `global_train.csv` with SMOTE.
+6. Train final initial model (g0) with SMOTE.
