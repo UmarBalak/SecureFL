@@ -61,13 +61,7 @@ class IoTModelTrainer:
             optimizer=optimizer,
             loss='categorical_crossentropy',
             metrics=[
-                'accuracy',
-                tfa.metrics.F1Score(
-                    num_classes=num_classes,
-                    average='macro',
-                    threshold=0.5,
-                    name='type_f1'  # Monitor F1-score like successful notebook
-                )
+                'accuracy'
             ]
         )
         
@@ -75,11 +69,10 @@ class IoTModelTrainer:
         default_callbacks = [
             ModelCheckpoint(
                 filepath='models/best_mlp_model.h5',
-                monitor='val_type_f1',  # Monitor F1-score instead of loss
-                mode='max',  # Maximize F1-score
+                monitor='val_loss',
                 save_best_only=True,
                 save_weights_only=True,
-                verbose=1
+                verbose=2
             ),
             ReduceLROnPlateau(
                 monitor='val_loss',
@@ -90,12 +83,12 @@ class IoTModelTrainer:
                 cooldown=3  # Cooldown period
             ),
             EarlyStopping(
-                monitor='val_type_f1',
-                mode='max',
-                patience=15,  # Longer patience for F1-score
+                monitor='val_loss',
+                mode='min',
+                patience=10,
                 restore_best_weights=True,
                 verbose=1,
-                min_delta=0.001  # Require meaningful improvement
+                min_delta=0.001
             )
         ]
         

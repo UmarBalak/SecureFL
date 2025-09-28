@@ -168,32 +168,29 @@ def main(epochs=100):
         "final_test_precision": str(test_metrics.get('macro_precision', 'nan')),
         "final_test_recall": str(test_metrics.get('macro_recall', 'nan')),
         "final_test_f1": str(test_metrics.get('macro_f1', 'nan')),
+        "num_training_samples": str(num_samples),
     }
 
     complete_metadata = {
         "test_metrics": test_metrics,
-        "model_architecture": config['model_architecture'],
-        "learning_rate": config['learning_rate'],
-        "enhanced_features": True,
-        "selected_features_count": 25,
-        "feature_dimensions": X_train.shape[1],
-        "preprocessing_pipeline": "RobustScaler + MinMaxScaler + OneHotEncoder",
-        "epochs": epochs,
-        "batch_size": config['batch_size'],
         "num_training_samples": str(num_samples),
-        "global_classes": config['class_names'],
-        "num_classes_fixed": config['num_classes'],
         "data_classes_present": int(actual_classes),
+        "batch_size": config['batch_size'],
+        "learning_rate": config['learning_rate'],
+        "differential_privacy": False,
+        "noise_multiplier": None,
+        "final_epsilon": None,
+        "delta": None
     }
 
-    metadata_file_path = os.path.join("models", "g0_metadata.json")
+    metadata_file_path = os.path.join("models", "g0.json")
     with open(metadata_file_path, "w") as f:
         json.dump(complete_metadata, f, indent=2)
 
     # Upload weights and metadata
     try:
         upload_file(weights_path, os.getenv("SERVER_CONTAINER_NAME"), metadata)
-        upload_file(metadata_file_path, os.getenv("SERVER_CONTAINER_NAME"), metadata={})
+        upload_file(metadata_file_path, os.getenv("SERVER_CONTAINER_NAME"), {})
         print("Uploaded enhanced model weights and metadata to server blob container.")
     except Exception as e:
         print(f"Warning: failed to upload model artifacts: {e}")

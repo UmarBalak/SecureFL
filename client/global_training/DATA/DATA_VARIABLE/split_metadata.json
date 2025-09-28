@@ -1,0 +1,301 @@
+{
+  "split_info": {
+    "global_train_pct": 24.996197718631176,
+    "global_test_pct": 14.99619771863118,
+    "client_pool_pct": 60.00760456273764,
+    "alpha": 1.0,
+    "n_clients": 20,
+    "original_size": 157800,
+    "minority_classes": [],
+    "class_distribution_type": "variable",
+    "min_classes_per_client": 4,
+    "max_classes_per_client": 9,
+    "avg_classes_per_client": 6.9
+  },
+  "client_info": {
+    "client_1": {
+      "path": "DATA_VARIABLE/client_1.csv",
+      "samples": 4452,
+      "classes": 9,
+      "class_distribution": {
+        "Backdoor": 1370,
+        "XSS": 641,
+        "Password": 584,
+        "Ransomware": 575,
+        "Normal": 492,
+        "DDoS_HTTP": 338,
+        "Vulnerability_scanner": 214,
+        "SQL_injection": 200,
+        "Fingerprinting": 38
+      }
+    },
+    "client_2": {
+      "path": "DATA_VARIABLE/client_2.csv",
+      "samples": 3311,
+      "classes": 4,
+      "class_distribution": {
+        "DDoS_ICMP": 1730,
+        "Uploading": 882,
+        "Vulnerability_scanner": 572,
+        "MITM": 127
+      }
+    },
+    "client_3": {
+      "path": "DATA_VARIABLE/client_3.csv",
+      "samples": 3479,
+      "classes": 5,
+      "class_distribution": {
+        "DDoS_TCP": 1570,
+        "Port_Scanning": 642,
+        "DDoS_ICMP": 434,
+        "Vulnerability_scanner": 430,
+        "SQL_injection": 403
+      }
+    },
+    "client_4": {
+      "path": "DATA_VARIABLE/client_4.csv",
+      "samples": 5363,
+      "classes": 9,
+      "class_distribution": {
+        "DDoS_TCP": 1570,
+        "DDoS_UDP": 1229,
+        "Password": 583,
+        "Ransomware": 574,
+        "DDoS_HTTP": 340,
+        "Uploading": 330,
+        "Port_Scanning": 321,
+        "Vulnerability_scanner": 215,
+        "SQL_injection": 201
+      }
+    },
+    "client_5": {
+      "path": "DATA_VARIABLE/client_5.csv",
+      "samples": 4709,
+      "classes": 9,
+      "class_distribution": {
+        "Backdoor": 1369,
+        "XSS": 641,
+        "Password": 584,
+        "Ransomware": 574,
+        "Normal": 492,
+        "Uploading": 332,
+        "Port_Scanning": 321,
+        "SQL_injection": 200,
+        "DDoS_TCP": 196
+      }
+    },
+    "client_6": {
+      "path": "DATA_VARIABLE/client_6.csv",
+      "samples": 5738,
+      "classes": 6,
+      "class_distribution": {
+        "DDoS_UDP": 1967,
+        "Vulnerability_scanner": 1719,
+        "Ransomware": 919,
+        "Port_Scanning": 514,
+        "DDoS_ICMP": 346,
+        "Backdoor": 273
+      }
+    },
+    "client_7": {
+      "path": "DATA_VARIABLE/client_7.csv",
+      "samples": 5452,
+      "classes": 4,
+      "class_distribution": {
+        "Normal": 3942,
+        "Uploading": 883,
+        "DDoS_TCP": 523,
+        "Fingerprinting": 104
+      }
+    },
+    "client_8": {
+      "path": "DATA_VARIABLE/client_8.csv",
+      "samples": 3975,
+      "classes": 9,
+      "class_distribution": {
+        "SQL_injection": 1607,
+        "Password": 585,
+        "Normal": 492,
+        "Uploading": 330,
+        "Port_Scanning": 321,
+        "DDoS_ICMP": 217,
+        "Vulnerability_scanner": 214,
+        "Backdoor": 171,
+        "Fingerprinting": 38
+      }
+    },
+    "client_9": {
+      "path": "DATA_VARIABLE/client_9.csv",
+      "samples": 6217,
+      "classes": 4,
+      "class_distribution": {
+        "Normal": 3941,
+        "Uploading": 882,
+        "Port_Scanning": 857,
+        "SQL_injection": 537
+      }
+    },
+    "client_10": {
+      "path": "DATA_VARIABLE/client_10.csv",
+      "samples": 2924,
+      "classes": 7,
+      "class_distribution": {
+        "XSS": 854,
+        "Password": 778,
+        "Port_Scanning": 428,
+        "Fingerprinting": 306,
+        "SQL_injection": 267,
+        "Backdoor": 228,
+        "MITM": 63
+      }
+    },
+    "client_11": {
+      "path": "DATA_VARIABLE/client_11.csv",
+      "samples": 5532,
+      "classes": 6,
+      "class_distribution": {
+        "DDoS_ICMP": 1731,
+        "XSS": 1026,
+        "Password": 934,
+        "Normal": 788,
+        "DDoS_HTTP": 540,
+        "Port_Scanning": 513
+      }
+    },
+    "client_12": {
+      "path": "DATA_VARIABLE/client_12.csv",
+      "samples": 5129,
+      "classes": 9,
+      "class_distribution": {
+        "SQL_injection": 1607,
+        "DDoS_UDP": 1230,
+        "XSS": 641,
+        "Ransomware": 575,
+        "DDoS_HTTP": 339,
+        "Uploading": 331,
+        "DDoS_TCP": 197,
+        "Backdoor": 171,
+        "Fingerprinting": 38
+      }
+    },
+    "client_13": {
+      "path": "DATA_VARIABLE/client_13.csv",
+      "samples": 2457,
+      "classes": 5,
+      "class_distribution": {
+        "Uploading": 661,
+        "Port_Scanning": 642,
+        "Vulnerability_scanner": 431,
+        "MITM": 381,
+        "Backdoor": 342
+      }
+    },
+    "client_14": {
+      "path": "DATA_VARIABLE/client_14.csv",
+      "samples": 3622,
+      "classes": 4,
+      "class_distribution": {
+        "DDoS_ICMP": 1730,
+        "DDoS_HTTP": 901,
+        "SQL_injection": 535,
+        "Backdoor": 456
+      }
+    },
+    "client_15": {
+      "path": "DATA_VARIABLE/client_15.csv",
+      "samples": 5014,
+      "classes": 9,
+      "class_distribution": {
+        "Backdoor": 1369,
+        "DDoS_UDP": 1229,
+        "XSS": 641,
+        "Password": 584,
+        "Ransomware": 575,
+        "Uploading": 331,
+        "SQL_injection": 200,
+        "MITM": 47,
+        "Fingerprinting": 38
+      }
+    },
+    "client_16": {
+      "path": "DATA_VARIABLE/client_16.csv",
+      "samples": 3997,
+      "classes": 8,
+      "class_distribution": {
+        "DDoS_ICMP": 1730,
+        "Ransomware": 656,
+        "DDoS_HTTP": 386,
+        "Uploading": 378,
+        "Port_Scanning": 368,
+        "SQL_injection": 229,
+        "Backdoor": 196,
+        "MITM": 54
+      }
+    },
+    "client_17": {
+      "path": "DATA_VARIABLE/client_17.csv",
+      "samples": 7374,
+      "classes": 8,
+      "class_distribution": {
+        "Normal": 3941,
+        "DDoS_UDP": 1406,
+        "XSS": 732,
+        "Uploading": 378,
+        "Port_Scanning": 367,
+        "DDoS_ICMP": 247,
+        "Vulnerability_scanner": 246,
+        "MITM": 57
+      }
+    },
+    "client_18": {
+      "path": "DATA_VARIABLE/client_18.csv",
+      "samples": 6390,
+      "classes": 7,
+      "class_distribution": {
+        "DDoS_HTTP": 2704,
+        "DDoS_UDP": 1639,
+        "Ransomware": 766,
+        "Uploading": 444,
+        "DDoS_ICMP": 290,
+        "Vulnerability_scanner": 286,
+        "DDoS_TCP": 261
+      }
+    },
+    "client_19": {
+      "path": "DATA_VARIABLE/client_19.csv",
+      "samples": 4297,
+      "classes": 9,
+      "class_distribution": {
+        "DDoS_TCP": 1571,
+        "Password": 584,
+        "Ransomware": 575,
+        "Normal": 493,
+        "DDoS_HTTP": 339,
+        "Port_Scanning": 321,
+        "SQL_injection": 202,
+        "Backdoor": 173,
+        "Fingerprinting": 39
+      }
+    },
+    "client_20": {
+      "path": "DATA_VARIABLE/client_20.csv",
+      "samples": 5260,
+      "classes": 7,
+      "class_distribution": {
+        "Vulnerability_scanner": 1719,
+        "XSS": 856,
+        "Password": 778,
+        "Ransomware": 767,
+        "DDoS_HTTP": 450,
+        "Port_Scanning": 429,
+        "DDoS_TCP": 261
+      }
+    }
+  },
+  "global_sets": {
+    "train_path": "DATA_VARIABLE/global_train.csv",
+    "train_samples": 39444,
+    "test_path": "DATA_VARIABLE/global_test.csv",
+    "test_samples": 23664
+  }
+}

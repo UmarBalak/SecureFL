@@ -117,9 +117,9 @@ def analyze_class_distribution(df, label_col):
 def enhanced_fl_split_with_class_fluctuation(
     input_csv: str,
     label_col: str,
-    global_train_pct: float = 0.4,
+    global_train_pct: float = 0.25,
     global_test_pct: float = 0.15,
-    n_clients: int = 10,
+    n_clients: int = 20,
     alpha: float = 1.0,
     min_samples_per_class: int = 50,
     seed: int = 42,
@@ -128,7 +128,7 @@ def enhanced_fl_split_with_class_fluctuation(
     class_distribution_type: str = "variable",  # "fixed", "variable", "extreme"
     min_classes_per_client: int = 2,           # Minimum classes each client must have
     max_classes_per_client: int = 8,           # Maximum classes each client can have
-    dominant_class_prob: float = 0.7,          # Probability that dominant class takes majority of samples
+    dominant_class_prob: float = 0.5,          # Probability that dominant class takes majority of samples
     rare_class_clients: int = 2,               # Number of clients that get rare classes exclusively
 ):
     """
