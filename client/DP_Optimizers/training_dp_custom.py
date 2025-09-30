@@ -474,85 +474,122 @@ class IoTModelTrainer:
         return history, [], 0.0
     
     def _run_training_loop(self, X_train, y_train_cat, X_val, y_val_cat,
-                          epochs, batch_size, verbose, callbacks, dp_type):
-        """Common training loop for DP methods"""
+                        epochs, batch_size, verbose, dp_type):
+        """Common training loop for DP methods with simple success tracking"""
         steps_per_epoch = len(X_train) // batch_size
-        history = {'loss': [], 'val_loss': [], 'accuracy': [], 'val_accuracy': []}
-        
-        for epoch in range(epochs):
-            if verbose >= 1:
-                print(f"Epoch {epoch + 1}/{epochs}")
-            
-            epoch_loss = tf.keras.metrics.Mean()
-            epoch_acc = tf.keras.metrics.CategoricalAccuracy()
-            
-            # Training batches
-            for i in range(steps_per_epoch):
-                start_idx = i * batch_size
-                end_idx = min((i + 1) * batch_size, len(X_train))
-                X_batch = X_train[start_idx:end_idx]
-                y_batch = y_train_cat[start_idx:end_idx]
-                
-                try:
-                    # Choose optimizer
-                    if dp_type == 'gaussian':
-                        batch_loss = self.gaussian_optimizer.train_step_with_dp(X_batch, y_batch)
-                    else:  # laplace
-                        batch_loss = self.laplace_optimizer.train_step_with_dp(X_batch, y_batch)
-                    
-                    # Update metrics
-                    epoch_loss(batch_loss)
-                    predictions = self.model(X_batch, training=False)
-                    epoch_acc(y_batch, predictions)
-                    
-                except Exception as e:
-                    print(f"Training step failed: {e}")
-                    break
-            
-            # Validation evaluation
-            val_predictions = self.model(X_val, training=False)
-            val_loss = tf.reduce_mean(
-                tf.keras.losses.categorical_crossentropy(y_val_cat, val_predictions)
-            ).numpy()
-            val_acc = tf.reduce_mean(
-                tf.cast(tf.equal(tf.argmax(y_val_cat, axis=1), tf.argmax(val_predictions, axis=1)), tf.float32)
-            ).numpy()
-            
-            # Store history
-            train_loss = epoch_loss.result().numpy()
-            train_acc = epoch_acc.result().numpy()
-            
-            history['loss'].append(float(train_loss))
-            history['val_loss'].append(float(val_loss))
-            history['accuracy'].append(float(train_acc))
-            history['val_accuracy'].append(float(val_acc))
-            
-            # Callbacks
-            for cb in callbacks:
-                cb.on_epoch_end(epoch, {
-                    'loss': train_loss,
-                    'accuracy': train_acc,
-                    'val_loss': val_loss,
-                    'val_accuracy': val_acc
-                })
-            
-            if verbose >= 1:
+        history = {
+            'loss': [], 'val_loss': [], 'accuracy': [], 'val_accuracy': [], 
+            'privacy_info': [],
+            'training_success': False  # ✅ Simple success flag
+        }
+
+        try:
+            for epoch in range(epochs):
+                if verbose >= 1:
+                    print(f"Epoch {epoch + 1}/{epochs}")
+
+                epoch_loss = tf.keras.metrics.Mean()
+                epoch_acc = tf.keras.metrics.CategoricalAccuracy()
+
+                # Training batches
+                for i in range(steps_per_epoch):
+                    start_idx = i * batch_size
+                    end_idx = min((i + 1) * batch_size, len(X_train))
+
+                    X_batch = X_train[start_idx:end_idx]
+                    y_batch = y_train_cat[start_idx:end_idx]
+
+                    try:
+                        # Choose optimizer
+                        if dp_type == 'gaussian':
+                            batch_loss = self.gaussian_optimizer.train_step_with_dp(X_batch, y_batch)
+                        elif dp_type == 't_laplace':
+                            batch_loss = self.traditional_laplace_optimizer.train_step_with_dp(X_batch, y_batch)
+                        elif dp_type == 'a_laplace':
+                            batch_loss = self.advanced_laplace_optimizer.train_step_with_dp(X_batch, y_batch)
+
+                        # Update metrics
+                        epoch_loss(batch_loss)
+                        predictions = self.model(X_batch, training=False)
+                        epoch_acc(y_batch, predictions)
+                        
+                    except Exception as e:
+                        print(f"Training step failed: {e}")
+                        return history, 0.0  # Early return on failure
+
+                # Validation evaluation
+                val_predictions = self.model(X_val, training=False)
+                val_loss = tf.reduce_mean(
+                    tf.keras.losses.categorical_crossentropy(y_val_cat, val_predictions)
+                ).numpy()
+
+                val_acc = tf.reduce_mean(
+                    tf.cast(tf.equal(tf.argmax(y_val_cat, axis=1), tf.argmax(val_predictions, axis=1)), tf.float32)
+                ).numpy()
+
+                # Store history
+                train_loss = epoch_loss.result().numpy()
+                train_acc = epoch_acc.result().numpy()
+
+                history['loss'].append(float(train_loss))
+                history['val_loss'].append(float(val_loss))
+                history['accuracy'].append(float(train_acc))
+                history['val_accuracy'].append(float(val_acc))
+
+                # Get privacy info
                 if dp_type == 'gaussian':
                     privacy_info = self.gaussian_optimizer.get_privacy_spent()
-                else:
-                    privacy_info = self.laplace_optimizer.get_privacy_spent()
-                print(f"  loss: {train_loss:.4f} - accuracy: {train_acc:.4f} - "
-                      f"val_loss: {val_loss:.4f} - val_accuracy: {val_acc:.4f} - "
-                      f"epsilon: {privacy_info['epsilon']:.4f}")
-        
-        # Create history wrapper
+                elif dp_type == 't_laplace':
+                    privacy_info = self.traditional_laplace_optimizer.get_privacy_spent()
+                elif dp_type == 'a_laplace':
+                    privacy_info = self.advanced_laplace_optimizer.get_privacy_spent()
+
+                history['privacy_info'].append(privacy_info)
+
+                if verbose >= 1:
+                    print(f" loss: {train_loss:.4f} - accuracy: {train_acc:.4f} - "
+                        f"val_loss: {val_loss:.4f} - val_accuracy: {val_acc:.4f} - "
+                        f"epsilon: {privacy_info['epsilon']:.4f} - "
+                        f"delta: {privacy_info['delta']:.2e} - "
+                        f"mechanism: {privacy_info['mechanism']}")
+
+            # ✅ Set success flag ONLY after completing all epochs
+            history['training_success'] = True
+
+        except Exception as e:
+            print(f"Training failed: {e}")
+            history['training_success'] = False
+
+        # Simple history wrapper
         class HistoryWrapper:
             def __init__(self, history_dict):
                 self.history = history_dict
-        
-        final_eps = callbacks[0].epoch_data[-1]['epsilon'] if callbacks and callbacks[0].epoch_data else 0.0
-        
-        return HistoryWrapper(history), callbacks[0].epoch_data if callbacks else [], final_eps
+
+            def get(self, key, default=None):
+                return self.history.get(key, default)
+            
+            def __getitem__(self, key):
+                return self.history[key]
+            
+            def keys(self):
+                return self.history.keys()
+            
+            def items(self):
+                return self.history.items()
+
+        # Get final epsilon
+        final_eps = 0.0
+        try:
+            if dp_type == 'gaussian':
+                final_eps = self.gaussian_optimizer.get_privacy_spent()['epsilon']
+            elif dp_type == 't_laplace':
+                final_eps = self.traditional_laplace_optimizer.get_privacy_spent()['epsilon']
+            elif dp_type == 'a_laplace':
+                final_eps = self.advanced_laplace_optimizer.get_privacy_spent()['epsilon']
+        except:
+            pass
+
+        return HistoryWrapper(history), final_eps
 
 # ========================= NOISE EQUIVALENCE CALCULATOR =========================
 

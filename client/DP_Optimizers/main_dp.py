@@ -18,6 +18,10 @@ from functions_dp import wait_for_csv
 # Corrected trainer implementing both TRUE DP approaches
 from training_dp_advanced import IoTModelTrainer
 
+SEED = 42
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
 # Paths
 script_directory = os.path.dirname(os.path.realpath(__file__))
 DATASET_PATH = "DATA/global_train.csv"
@@ -34,15 +38,9 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         'train_data_path_pattern': DATASET_PATH,
         'test_data_path_pattern': TEST_DATASET_PATH,
         'epochs': epochs,
-        'batch_size': 1024,  # Reduced for better DP performance
         'random_state': 42,
         'model_architecture': [256, 256],  # Simpler architecture for DP
         'learning_rate': 0.001,  # Standard learning rate
-        'l2_norm_clip': 3.0,    # Reasonable clipping
-        'noise_multiplier': 1.0,
-        'l1_norm_clip': 1.0,
-        'delta': 1e-5,
-        'epsilon_total': 200.0,
         'num_classes': 15,
         'class_names': [
             'Backdoor', 'DDoS_HTTP', 'DDoS_ICMP', 'DDoS_TCP', 'DDoS_UDP',
@@ -51,6 +49,71 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         ],
         'artifacts_dir': "artifacts",
     }
+    
+    ## Configuration A: Comparable Privacy (ε ≈ 3.0) (only for 20 epochs, if number of epochs or samples changed, gaussian ε will be different.)
+    gaussian_config = {
+        'l2_norm_clip': 3.0,
+        'noise_multiplier': 0.9811, # Will give ε = 2.9988 (approx) after 20 epochs and 100986 samples
+        'delta': 1e-5,
+        'batch_size': 1024,
+
+        # not to use
+        'l1_norm_clip': 3.0,
+        'epsilon_total': 500.0,
+    }
+    t_laplace_config = {
+        'l1_norm_clip': 3.0, # L1 is 80× LARGER than L2!
+        'epsilon_total': 3.0,
+        'batch_size': 1024,
+
+        # not to use
+        'noise_multiplier': 1.0,
+        'delta': 1e-5,
+        'l2_norm_clip': 3.0,
+    }
+    a_laplace_config = {
+        'l2_norm_clip': 3.0, # 3.0
+        'epsilon_total': 3.0, # Uses total ε as traditional laplace, but applies similar to gaussian, means ε increases with epochs.
+        'batch_size': 1024,
+
+        # not to use
+        'noise_multiplier': 1.0,
+        'delta': 1e-5,
+        'l1_norm_clip': 3.0,
+    }
+
+    ## Configuration B: Comparable Utility (similar accuracy)
+    # gaussian_config = {
+    #     'l2_norm_clip': 3.0,
+    #     'noise_multiplier': 1.1, # Will give ε = 3.1520 (approx) after 20 epochs.
+    #     'delta': 1e-5,
+    #     'batch_size': 1024,
+
+    #     # not to use
+    #     'l1_norm_clip': 3.0,
+    #     'epsilon_total': 500.0,
+    # }
+    # t_laplace_config = {
+    #     'l1_norm_clip': 3.0,
+    #     'epsilon_total': 300.0,
+    #     'batch_size': 1024,
+
+    #     # not to use
+    #     'noise_multiplier': 1.0,
+    #     'delta': 1e-5,
+    #     'l2_norm_clip': 3.0,
+    # }
+    # a_laplace_config = {
+    #     'l2_norm_clip': 3.0,
+    #     'epsilon_total': 10.0,
+    #     'batch_size': 1024,
+
+    #     # not to use
+    #     'noise_multiplier': 1.0,
+    #     'delta': 1e-5,
+    #     'l1_norm_clip': 3.0,
+    # }
+    
 
     # Resolve CSVs
     config['train_data_path'] = wait_for_csv(config['train_data_path_pattern'])
@@ -123,17 +186,21 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         traceback.print_exc()
         return
 
-    noise_types_to_test = ['gaussian', 'traditional_laplace', 'advanced_laplace']
+    noise_types_to_test = ['t_laplace', 'a_laplace', 'gaussian'] # ['t_laplace', 'a_laplace', 'gaussian']
 
     all_results = {}
-
+    
     for noise_type in noise_types_to_test:
+        if noise_type == 't_laplace':
+            current_config = t_laplace_config
+        elif noise_type == 'a_laplace':
+            current_config = a_laplace_config
+        else:
+            current_config = gaussian_config
+
         print("\n" + "=" * 60)
         print(f"TESTING APPROACH: {noise_type.upper()}")
         print("=" * 60)
-
-        if noise_type == 'advanced_laplace':
-            config['epsilon_total'] = 50.0
 
         start_time = time.time()
 
@@ -172,31 +239,31 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
             # 2. Advanced Laplace (research paper) - Fair comparison
                 # history_adv_laplace, _, eps_adv_laplace = trainer.train_model(  
                 #     X_train, y_train_cat, X_val, y_val_cat, model,
-                #     noise_type='advanced_laplace',
+                #     noise_type='a_laplace',
                 #     epsilon_total=10.0, l2_norm_clip=3.0, delta=1e-5
             # )
 
             # 3. Traditional Laplace - For completeness
                 # history_trad_laplace, _, eps_trad_laplace = trainer.train_model(
                 #     X_train, y_train_cat, X_val, y_val_cat, model,
-                #     noise_type='traditional_laplace', 
+                #     noise_type='t_laplace', 
                 #     epsilon_total=500.0, l1_norm_clip=3.0
             # )
             
             # Train
-            history, dp_perf, final_eps = trainer.train_model(
+            history, final_eps = trainer.train_model(
                 X_train, y_train_cat, X_val, y_val_cat,
                 model=model,
                 epochs=config['epochs'],
-                batch_size=config['batch_size'],
+                batch_size=current_config['batch_size'],
                 verbose=2,
                 use_dp=True,
                 noise_type=noise_type,
-                l2_norm_clip=config['l2_norm_clip'],
-                l1_norm_clip=config['l1_norm_clip'],
-                noise_multiplier=config['noise_multiplier'],
-                epsilon_total=config['epsilon_total'],
-                delta=config['delta'],
+                l2_norm_clip=current_config['l2_norm_clip'],
+                l1_norm_clip=current_config['l1_norm_clip'],
+                noise_multiplier=eps,
+                epsilon_total=current_config['epsilon_total'],
+                delta=current_config['delta'],
                 learning_rate=config['learning_rate']
             )
 
@@ -227,30 +294,27 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         final_eps_safe = max(final_eps or 1e-6, 1e-6)
 
         results = {
-            'dp_perf': dp_perf,
-            'config': config,
             'noise_type': noise_type,
             'approach_info': {
                 'algorithm': 'Gaussian' if noise_type == 'gaussian' else 'Laplace',
-                'library_method': 'TensorFlow Privacy' if noise_type == 'gaussian' else 'Google PyDP',
                 'epsilon_calculation': 'RDP accounting' if noise_type == 'gaussian' else 'Pure DP accounting',
                 'privacy_guarantees': 'Differential Privacy (ε,δ)-DP'
             },
+            'training_samples': len(X_train),
+            'batch_size': current_config['batch_size'],
+            'epochs': config['epochs'],
+            'learning_rate': config['learning_rate'],
             'final_test_metrics': test_metrics,
             'final_epsilon': final_eps_safe,
+            'privacy_info_per_epoch': history.get('privacy_info', []),
             'training_time_sec': float(total_time),
-            'training_success': training_success,
-            'privacy_utility_trade_off': {
-                'accuracy_per_epsilon': acc / final_eps_safe,
-                'f1_per_epsilon': float(test_metrics.get('f1', 0.0) or 0.0) / final_eps_safe
-            }
+            'training_success': history.get('training_success', False)
         }
 
         all_results[noise_type] = results
 
         # Save individual results
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        path = f"results/{noise_type}_dp_results_corrected_{ts}.json"
+        path = f"Results_Fixed_Privacy_Budget/{noise_type}_dp_results.json"
         with open(path, "w") as f:
             json.dump(results, f, indent=4)
         print(f"Saved: {path}")
@@ -269,24 +333,22 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         print("\n" + "=" * 100)
         print("FINAL CORRECTED DP COMPARISON")
         print("=" * 100)
-        print(f"{'Approach':<20} {'Algorithm':<10} {'Library':<20} {'Epsilon':<12} {'TestAcc':<10} {'Time(s)':<8} {'Acc/ε':<8}")
+        print(f"{'Approach':<12} {'Algorithm':<12} {'Epsilon':<12} {'TestAcc':<12} {'Time(s)':<12}")
         print("-" * 100)
 
         for k, v in all_results.items():
             if v['training_success']:
                 alg = v['approach_info']['algorithm']
-                lib = v['approach_info']['library_method']
                 eps = float(v['final_epsilon'] or 0.0)
                 acc = float(v['final_test_metrics'].get('accuracy', 0.0) or 0.0)
                 tt = float(v['training_time_sec'] or 0.0)
-                acc_per_eps = v['privacy_utility_trade_off']['accuracy_per_epsilon']
 
-                print(f"{k:<12} {alg:<10} {lib:<20} {eps:<10.4f} {acc:<10.4f} {tt:<8.1f} {acc_per_eps:<8.3f}")
+                print(f"{k:<12} {alg:<12} {eps:<12.4f} {acc:<12.4f} {tt:<12.1f}")
             else:
-                print(f"{k:<12} {'FAILED':<10} {'-':<20} {'-':<10} {'-':<10} {'-':<8} {'-':<8}")
+                print(f"{k:<12} {'-':<12} {'-':<12} {'-':<12} {'-':<12} {'-':<12}")
 
         # Save combined results
-        combined_path = f"results/combined_dp_results_corrected_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        combined_path = f"Results_Fixed_Privacy_Budget/combined_dp_results.json"
         with open(combined_path, "w") as f:
             json.dump(all_results, f, indent=4)
         print(f"\nCombined results saved: {combined_path}")

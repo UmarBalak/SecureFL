@@ -31,31 +31,6 @@ How to Execute? Run both models with the same hyperparameters (including σ and 
 * This is 156x LESS noise than Laplace!
 ---
 
-=== NOISE LEVEL EQUIVALENCE GUIDE ===
-For l2_norm_clip = 1.0:
-
-Gaussian -> Equivalent Laplace:
-  Gaussian: noise_multiplier=0.5, delta=1e-05
-  -> Noise scale: 0.500
-  -> Equivalent Laplace epsilon_per_step: 2.000
-  -> For 20 epochs (~400 steps): epsilon_total ≈ 800.0
-
-  Gaussian: noise_multiplier=1.0, delta=1e-05
-  -> Noise scale: 1.000
-  -> Equivalent Laplace epsilon_per_step: 1.000
-  -> For 20 epochs (~400 steps): epsilon_total ≈ 400.0
-
-  Gaussian: noise_multiplier=1.5, delta=1e-05
-  -> Noise scale: 1.500
-  -> Equivalent Laplace epsilon_per_step: 0.667
-  -> For 20 epochs (~400 steps): epsilon_total ≈ 266.7
-
-  Gaussian: noise_multiplier=2.0, delta=1e-05
-  -> Noise scale: 2.000
-  -> Equivalent Laplace epsilon_per_step: 0.500
-  -> For 20 epochs (~400 steps): epsilon_total ≈ 200.0
-
-
 === EXAMPLE CONFIGURATIONS FOR FAIR COMPARISON ===
 
 Configuration 1 - Similar Noise Levels:
@@ -165,3 +140,16 @@ Check:
 * Laplace mechanism designed for simple queries (count, sum)
 * NOT optimized for deep learning gradient updates
 * High ε value indicates poor privacy-utility trade-off for ML
+
+---
+`"It is fundamentally difficult to compare different versions of differential privacy. The comparison may yield opposite conclusions depending on how privacy is quantified".`
+**Source: "The Discrete Gaussian for Differential Privacy" (Canonne et al., 2020)** -> `https://papers.neurips.cc/paper_files/paper/2020/file/b53b3a3d6ab90ce0268229151c9bde11-Paper.pdf`
+
+
+![alt text](image.png)
+
+### For a typical neural network layer with 10,000 parameters:
+* L1 norm: ≈ 80
+* L2 norm: ≈ 1
+* L1 is 80× LARGER than L2!
+
