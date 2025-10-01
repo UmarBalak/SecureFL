@@ -1,0 +1,580 @@
+{
+    "noise_type": "t_laplace",
+    "approach_info": {
+        "algorithm": "Laplace",
+        "epsilon_calculation": "Pure DP accounting",
+        "privacy_guarantees": "Differential Privacy (\u03b5,\u03b4)-DP"
+    },
+    "training_samples": 100986,
+    "batch_size": 1024,
+    "epochs": 20,
+    "learning_rate": 0.001,
+    "final_test_metrics": {
+        "loss": 3.181025505065918,
+        "accuracy": 0.09609442949295044,
+        "precision": [
+            0.044642857142857144,
+            0.17518248175182483,
+            0.025202520252025202,
+            0.0,
+            0.18793584379358438,
+            0.024925224327018942,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.021021021021021023,
+            0.05484089370345294,
+            0.0,
+            0.27111111111111114,
+            0.08326124567474048
+        ],
+        "recall": [
+            0.018404907975460124,
+            0.08520710059171598,
+            0.024844720496894408,
+            0.0,
+            0.4646551724137931,
+            0.3125,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.008009153318077803,
+            0.09818181818181818,
+            0.0,
+            0.07568238213399504,
+            0.47885572139303484
+        ],
+        "f1_score": [
+            0.026064291920069503,
+            0.11464968152866242,
+            0.025022341376228777,
+            0.0,
+            0.2676266137040715,
+            0.046168051708217916,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0115990057995029,
+            0.07037358818418767,
+            0.0,
+            0.11833171677982542,
+            0.14185703758290347
+        ],
+        "macro_precision": 0.059208213251842404,
+        "macro_recall": 0.10442273176698598,
+        "macro_f1": 0.05477948857224464,
+        "weighted_precision": 0.061941667549571436,
+        "weighted_recall": 0.09609443080091895,
+        "weighted_f1": 0.058471523158748366,
+        "confusion_matrix": [
+            [
+                15,
+                0,
+                92,
+                0,
+                60,
+                0,
+                0,
+                0,
+                0,
+                0,
+                7,
+                267,
+                0,
+                3,
+                371
+            ],
+            [
+                50,
+                72,
+                98,
+                0,
+                104,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                119,
+                0,
+                7,
+                395
+            ],
+            [
+                0,
+                0,
+                28,
+                0,
+                147,
+                841,
+                110,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                646,
+                0,
+                0,
+                0,
+                0,
+                0,
+                35,
+                45,
+                0,
+                0,
+                94
+            ],
+            [
+                0,
+                0,
+                0,
+                0,
+                539,
+                0,
+                63,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                558
+            ],
+            [
+                0,
+                0,
+                6,
+                0,
+                39,
+                25,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                7
+            ],
+            [
+                1,
+                0,
+                0,
+                0,
+                67,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                29
+            ],
+            [
+                163,
+                90,
+                345,
+                0,
+                0,
+                137,
+                58,
+                0,
+                0,
+                4,
+                140,
+                420,
+                0,
+                3,
+                584
+            ],
+            [
+                16,
+                56,
+                92,
+                0,
+                124,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                96,
+                0,
+                56,
+                359
+            ],
+            [
+                0,
+                0,
+                24,
+                0,
+                547,
+                0,
+                0,
+                0,
+                0,
+                0,
+                136,
+                2,
+                0,
+                42,
+                55
+            ],
+            [
+                3,
+                0,
+                201,
+                0,
+                127,
+                0,
+                0,
+                0,
+                0,
+                0,
+                7,
+                171,
+                0,
+                16,
+                349
+            ],
+            [
+                29,
+                72,
+                96,
+                0,
+                122,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                81,
+                0,
+                3,
+                422
+            ],
+            [
+                34,
+                71,
+                54,
+                0,
+                165,
+                0,
+                0,
+                0,
+                0,
+                0,
+                7,
+                149,
+                0,
+                13,
+                328
+            ],
+            [
+                2,
+                9,
+                15,
+                0,
+                14,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                18,
+                0,
+                61,
+                687
+            ],
+            [
+                23,
+                41,
+                60,
+                0,
+                167,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                108,
+                0,
+                20,
+                385
+            ]
+        ],
+        "classification_report": {
+            "Backdoor": {
+                "precision": 0.044642857142857144,
+                "recall": 0.018404907975460124,
+                "f1-score": 0.026064291920069503,
+                "support": 815.0
+            },
+            "DDoS_HTTP": {
+                "precision": 0.17518248175182483,
+                "recall": 0.08520710059171598,
+                "f1-score": 0.11464968152866242,
+                "support": 845.0
+            },
+            "DDoS_ICMP": {
+                "precision": 0.025202520252025202,
+                "recall": 0.024844720496894408,
+                "f1-score": 0.025022341376228777,
+                "support": 1127.0
+            },
+            "DDoS_TCP": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 820.0
+            },
+            "DDoS_UDP": {
+                "precision": 0.18793584379358438,
+                "recall": 0.4646551724137931,
+                "f1-score": 0.2676266137040715,
+                "support": 1160.0
+            },
+            "Fingerprinting": {
+                "precision": 0.024925224327018942,
+                "recall": 0.3125,
+                "f1-score": 0.046168051708217916,
+                "support": 80.0
+            },
+            "MITM": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 97.0
+            },
+            "Normal": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 1944.0
+            },
+            "Password": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 799.0
+            },
+            "Port_Scanning": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 806.0
+            },
+            "Ransomware": {
+                "precision": 0.021021021021021023,
+                "recall": 0.008009153318077803,
+                "f1-score": 0.0115990057995029,
+                "support": 874.0
+            },
+            "SQL_injection": {
+                "precision": 0.05484089370345294,
+                "recall": 0.09818181818181818,
+                "f1-score": 0.07037358818418767,
+                "support": 825.0
+            },
+            "Uploading": {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1-score": 0.0,
+                "support": 821.0
+            },
+            "Vulnerability_scanner": {
+                "precision": 0.27111111111111114,
+                "recall": 0.07568238213399504,
+                "f1-score": 0.11833171677982542,
+                "support": 806.0
+            },
+            "XSS": {
+                "precision": 0.08326124567474048,
+                "recall": 0.47885572139303484,
+                "f1-score": 0.14185703758290347,
+                "support": 804.0
+            },
+            "accuracy": 0.09609443080091895,
+            "macro avg": {
+                "precision": 0.059208213251842404,
+                "recall": 0.10442273176698598,
+                "f1-score": 0.05477948857224464,
+                "support": 12623.0
+            },
+            "weighted avg": {
+                "precision": 0.061941667549571436,
+                "recall": 0.09609443080091895,
+                "f1-score": 0.058471523158748366,
+                "support": 12623.0
+            }
+        }
+    },
+    "final_epsilon": 2.998469387755189,
+    "privacy_info_per_epoch": [
+        {
+            "epsilon": 0.15,
+            "delta": 0.0,
+            "steps": 98,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 0.3,
+            "delta": 0.0,
+            "steps": 196,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 0.4500000000000018,
+            "delta": 0.0,
+            "steps": 294,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 0.6,
+            "delta": 0.0,
+            "steps": 392,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 0.7499999999999963,
+            "delta": 0.0,
+            "steps": 490,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 0.8999999999999927,
+            "delta": 0.0,
+            "steps": 588,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.0499999999999892,
+            "delta": 0.0,
+            "steps": 686,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.1999999999999855,
+            "delta": 0.0,
+            "steps": 784,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.3499999999999819,
+            "delta": 0.0,
+            "steps": 882,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.4999999999999782,
+            "delta": 0.0,
+            "steps": 980,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.6499999999999746,
+            "delta": 0.0,
+            "steps": 1078,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.799999999999971,
+            "delta": 0.0,
+            "steps": 1176,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 1.9499999999999673,
+            "delta": 0.0,
+            "steps": 1274,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.0999999999999783,
+            "delta": 0.0,
+            "steps": 1372,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.2499999999999964,
+            "delta": 0.0,
+            "steps": 1470,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.4000000000000146,
+            "delta": 0.0,
+            "steps": 1568,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.5500000000000327,
+            "delta": 0.0,
+            "steps": 1666,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.700000000000051,
+            "delta": 0.0,
+            "steps": 1764,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.850000000000069,
+            "delta": 0.0,
+            "steps": 1862,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        },
+        {
+            "epsilon": 2.998469387755189,
+            "delta": 0.0,
+            "steps": 1959,
+            "mechanism": "Traditional Laplace (L1, Pure \u03b5-DP)",
+            "composition": "Sequential"
+        }
+    ],
+    "training_time_sec": 632.9934878349304,
+    "training_success": true
+}
