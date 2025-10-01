@@ -78,7 +78,6 @@ CLASS_NAMES = [
 
 # Main title
 st.markdown('<div class="main-header">🔒 Differential Privacy Mechanisms Comparison</div>', unsafe_allow_html=True)
-st.markdown('<div style="text-align: center; color: #666; margin-bottom: 2rem;">Advanced Laplace vs Gaussian vs Traditional Laplace | Research Dashboard</div>', unsafe_allow_html=True)
 
 # Sidebar
 with st.sidebar:
@@ -94,7 +93,8 @@ with st.sidebar:
             "📉 Per-Class Performance",
             "🎯 Confusion Matrices",
             "⏱️ Training Efficiency",
-            "📋 Detailed Metrics Table"
+            "📋 Detailed Metrics Table",
+            "❓ About This Study"
         ]
     )
 
@@ -1008,6 +1008,14 @@ elif page == "📋 Detailed Metrics Table":
 
     agg_df = pd.DataFrame(agg_data)
     st.dataframe(agg_df, width='stretch')
+
+elif page == "❓ About This Study":
+    # Read the markdown file
+    with open("client/DP_Optimizers/visualize/Differential_Privacy_in_Deep_Learning.md", "r", encoding="utf-8") as f:
+        md_content = f.read()
+
+    # Display it with st.markdown
+    st.markdown(md_content, unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")

@@ -1,53 +1,3 @@
-Top 3 Approaches for a PhD Comparison
-You must design your experiment to answer three critical questions using a fixed utility (e.g., test accuracy) or a fixed privacy budget (e.g., ϵ):
-
-1. Fixed Epsilon (ϵ) Comparison (Primary Method)
-This is the standard and most direct comparison. You fix the privacy budget and measure the resulting model quality (utility).
-
-Metric to Record -> Achieved Utility (Test Accuracy/F1-Score).
-The Core Question -> "For the exact same privacy budget, which mechanism delivers better model performance?"
-How to Execute?	For Gaussian DP, use RDP accounting to find the noise_multiplier (σ) that yields the target ϵ after the full number of epochs. For Laplace DP, adjust the ϵ total budget to match the target ϵ (since it's purely additive).
-
-2. Fixed Utility Comparison (Reverse Engineering)
-This method fixes the desired model quality and measures the privacy cost required to achieve it.
-
-Metric to Record -> Resulting Final ϵ (and δ).
-The Core Question -> "To achieve the same high-quality model, which mechanism requires spending less of the privacy budget?"
-How to Execute?	Use an iterative or binary search process to find the minimum noise_multiplier (σ for Gaussian) or maximum ϵ total (for Laplace) that still satisfies the target accuracy.
-
-3. Training Performance Comparison (Efficiency)
-This focuses on the practical aspects of the two implementations.
-
-Metric to Record -> Training Time (sec)
-How to Execute? Run both models with the same hyperparameters (including σ and C) and track total training time. Note: Since the privacy accounting is fundamentally different, the resulting final ϵ values will be different (Laplace ϵ will likely be much higher), but this answers the efficiency question.
-
----
-## laplace_scale = self.sensitivity / epsilon_per_step  # sensitivity = l2_norm_clip = 2.0
-* For epsilon_total=3.0, epochs=20, batch_size=128, ~468 steps
-* epsilon_per_step = 3.0/468 ≈ 0.0064
-* laplace_scale = 2.0/0.0064 ≈ 312.5 (EXTREMELY HIGH NOISE!)
-
-## gaussian_scale = self.l2_norm_clip * self.noise_multiplier  # 2.0 * 1.0 = 2.0
-* This is 156x LESS noise than Laplace!
----
-
-=== EXAMPLE CONFIGURATIONS FOR FAIR COMPARISON ===
-
-Configuration 1 - Similar Noise Levels:
-Gaussian: noise_multiplier=1.0, delta=1e-5, l2_norm_clip=1.0
-Laplace: epsilon_total=400.0, l2_norm_clip=1.0  # For 400 steps
-Expected: Similar accuracy
-
-Configuration 2 - Similar Privacy Guarantee:
-Gaussian: noise_multiplier=1.0, delta=1e-5  # Will give ε≈1.8 after 20 epochs       
-Laplace: epsilon_total=1.8, l2_norm_clip=1.0
-Expected: Similar epsilon, Laplace will have lower accuracy due to higher noise     
-
-Configuration 3 - Matched Performance:
-Gaussian: noise_multiplier=1.0, delta=1e-5
-Laplace: epsilon_total=50.0, l2_norm_clip=1.0  # Lower noise, better performance    
-Expected: Similar accuracy, but Laplace has much higher epsilon
-
 ## Key Differences and Performance*
 1. Dimensionality (DL models): In high-dimensional settings, the Gaussian mechanism generally outperforms Laplace due to less added noise. Conversely, Laplace can outperform Gaussian in very low dimensions. 
 2. Privacy vs. Utility Trade-off: Laplace offers a stronger privacy guarantee but typically adds more noise, leading to greater utility loss, especially in higher dimensions. 
@@ -62,18 +12,6 @@ Let me explain why Configuration 2 seems contradictory in simple terms:
 
 **Why Same Epsilon but Different Accuracy?**
 The epsilon value (ε=1.8) represents "privacy loss" - but the two mechanisms achieve this privacy loss in fundamentally different ways:
-
-**Gaussian Mechanism (ε=1.8):**
-Noise scale: 1.0 (moderate noise)
-Uses RDP accounting - very sophisticated, tight bounds
-Achieves ε=1.8 through smart mathematical composition
-
-**Laplace Mechanism (ε=1.8):**
-Noise scale: 222.2 (massive noise!)
-Uses simple composition - very conservative, loose bounds
-Achieves ε=1.8 by adding enormous noise to be "safe"
-
-**Result:** Laplace adds 222x more noise than Gaussian to achieve the same epsilon! Hence much lower accuracy.
 
 ## The Real Comparison
 Epsilon alone is not a fair comparison metric when mechanisms use different accounting methods!
@@ -102,23 +40,6 @@ Dataset Size  |  Conservative  |  Balanced  |  Aggressive  |  Sampling Rate (q) 
 
 ---
 
-# Optimal DP configuration
-DP_CONFIG = {
-    "approach": "BALANCED",           # Best for cybersecurity FL
-    "global_batch_size": 1024,        # ~1.5% sampling (70K dataset)
-    "client_batch_size": 512,         # ~7% sampling (7K client)
-    "small_client_batch_size": 256,   # ~8% sampling (3K client)
-}
-
----
-
-Approach      |  Conference Acceptance  |  Industry Adoption  |  Citation Potential
---------------+-------------------------+---------------------+--------------------
-BALANCED      |  High✅                  |  High✅              |  High✅             
-Conservative  |  Medium                 |  Low                |  Medium            
-
----
-
 # Gaussian vs Laplace
 
 Check:
@@ -144,12 +65,4 @@ Check:
 ---
 `"It is fundamentally difficult to compare different versions of differential privacy. The comparison may yield opposite conclusions depending on how privacy is quantified".`
 **Source: "The Discrete Gaussian for Differential Privacy" (Canonne et al., 2020)** -> `https://papers.neurips.cc/paper_files/paper/2020/file/b53b3a3d6ab90ce0268229151c9bde11-Paper.pdf`
-
-
-![alt text](image.png)
-
-### For a typical neural network layer with 10,000 parameters:
-* L1 norm: ≈ 80
-* L2 norm: ≈ 1
-* L1 is 80× LARGER than L2!
 
