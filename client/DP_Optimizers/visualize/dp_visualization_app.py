@@ -51,16 +51,16 @@ st.markdown("""
 def load_data():
     """Load all result files"""
     try:
-        with open('base_model.json', 'r') as f:
+        with open('https://github.com/UmarBalak/SecureFL/blob/main/client/DP_Optimizers/visualize/base_model.json', 'r') as f:
             base = json.load(f)
-        with open('detailed_results.json', 'r') as f:
+        with open('https://github.com/UmarBalak/SecureFL/blob/main/client/DP_Optimizers/visualize/detailed_results.json', 'r') as f:
             detailed = json.load(f)
-        with open('t_laplace_dp_results_exact_same_params.json', 'r') as f:
+        with open('https://github.com/UmarBalak/SecureFL/blob/main/client/DP_Optimizers/visualize/t_laplace_dp_results_exact_same_params.json', 'r') as f:
             trad_same = json.load(f)
-        with open('t_laplace_dp_results_equivalent_params.json', 'r') as f:
+        with open('https://github.com/UmarBalak/SecureFL/blob/main/client/DP_Optimizers/visualize/t_laplace_dp_results_equivalent_params.json', 'r') as f:
             trad_equiv = json.load(f)
 
-        summary_df = pd.read_csv('summary_results.csv')
+        summary_df = pd.read_csv('https://github.com/UmarBalak/SecureFL/blob/main/client/DP_Optimizers/visualize/summary_results.csv')
 
         return base, detailed, trad_same, trad_equiv, summary_df
     except Exception as e:
