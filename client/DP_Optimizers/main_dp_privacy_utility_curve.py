@@ -297,9 +297,9 @@ def main(epochs=20):
     print("=" * 80)
 
     # 1. Save detailed JSON
-    with open(f"{output_dir}/detailed_results_5.json", "w") as f:
-        json.dump(detailed_results, f, indent=4)
-    print(f"✓ Saved: {output_dir}/detailed_results_5.json")
+    # with open(f"{output_dir}/detailed_results_5.json", "w") as f:
+    #     json.dump(detailed_results, f, indent=4)
+    # print(f"✓ Saved: {output_dir}/detailed_results_5.json")
 
     # 2. Save summary CSV
     summary_df = pd.DataFrame({
@@ -311,8 +311,8 @@ def main(epochs=20):
         'Noise_Multiplier': noise_mult_values,
         'Accuracy_Gap': [r['accuracy_gap'] for r in detailed_results]
     })
-    summary_df.to_csv(f"{output_dir}/summary_results_5.csv", index=False)
-    print(f"✓ Saved: {output_dir}/summary_results_5.csv")
+    # summary_df.to_csv(f"{output_dir}/summary_results_5.csv", index=False)
+    # print(f"✓ Saved: {output_dir}/summary_results_5.csv")
 
     # 3. Create privacy-utility curve plot
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -372,6 +372,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     results, output_dir = main(epochs=args.epochs)
-    with open(f"{output_dir}/all_results_5.json", "w") as f:
-        json.dump(results, f, indent=4)
+    # with open(f"{output_dir}/all_results_5.json", "w") as f:
+    #     json.dump(results, f, indent=4)
     print(f"\n✅ Success! Check {output_dir}/ for all results")

@@ -62,7 +62,7 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         'epsilon_total': 500.0,
     }
     t_laplace_config = {
-        'l1_norm_clip': 3.0, # L1 is 80× LARGER than L2!
+        'l1_norm_clip': 953.34, # l1_clip = l2_clip × sqrt(n) = 3.0 × sqrt(100986) ≈ 953.34
         'epsilon_total': 3.0,
         'batch_size': 1024,
 
@@ -186,7 +186,7 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         traceback.print_exc()
         return
 
-    noise_types_to_test = ['t_laplace', 'a_laplace', 'gaussian'] # ['t_laplace', 'a_laplace', 'gaussian']
+    noise_types_to_test = ['t_laplace'] # ['t_laplace', 'a_laplace', 'gaussian']
 
     all_results = {}
     
@@ -261,7 +261,7 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
                 noise_type=noise_type,
                 l2_norm_clip=current_config['l2_norm_clip'],
                 l1_norm_clip=current_config['l1_norm_clip'],
-                noise_multiplier=eps,
+                noise_multiplier=current_config['noise_multiplier'],
                 epsilon_total=current_config['epsilon_total'],
                 delta=current_config['delta'],
                 learning_rate=config['learning_rate']
@@ -314,7 +314,7 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
         all_results[noise_type] = results
 
         # Save individual results
-        path = f"Results_Fixed_Privacy_Budget/{noise_type}_dp_results.json"
+        path = f"Results_Fixed_Privacy_Budget/{noise_type}_dp_results_equivalent_params.json"
         with open(path, "w") as f:
             json.dump(results, f, indent=4)
         print(f"Saved: {path}")
@@ -348,7 +348,7 @@ def main(epochs=20, target_epsilon=2.0, target_delta=1e-5, l2_norm_clip=3.0,
                 print(f"{k:<12} {'-':<12} {'-':<12} {'-':<12} {'-':<12} {'-':<12}")
 
         # Save combined results
-        combined_path = f"Results_Fixed_Privacy_Budget/combined_dp_results.json"
+        combined_path = f"Results_Fixed_Privacy_Budget/combined_dp_results_equivalent_params.json"
         with open(combined_path, "w") as f:
             json.dump(all_results, f, indent=4)
         print(f"\nCombined results saved: {combined_path}")
