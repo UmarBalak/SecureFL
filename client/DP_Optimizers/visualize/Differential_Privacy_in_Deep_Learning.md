@@ -563,5 +563,3 @@ The key insight is that Gaussian mechanism is actually more efficient - it achie
 3. Canonne et al., "The Discrete Gaussian for Differential Privacy" (NeurIPS 2020)
 4. https://www.abhishek-tiwari.com/differential-privacy-6-key-equations-explained/
 5. https://massedcompute.com/faq-answers/?question=What+are+the+key+differences+between+the+Laplace+mechanism+and+the+Gaussian+mechanism+in+differential+privacy%3F
-
----

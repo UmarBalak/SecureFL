@@ -7,12 +7,12 @@ import json
 import numpy as np
 
 # Page config
-st.set_page_config(
-    page_title="DP Mechanisms Comparison",
-    page_icon="🔒",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# st.set_page_config(
+#     page_title="DP Mechanisms Comparison",
+#     page_icon="🔒",
+#     layout="wide",
+#     initial_sidebar_state="expanded"
+# )
 
 # Custom CSS
 st.markdown("""
@@ -46,25 +46,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+from pathlib import Path
+
+# Get the directory where THIS file is located
+CURRENT_DIR = Path(__file__).parent
+
 # Load data
 @st.cache_data
 def load_data():
     """Load all result files"""
     try:
-        with open('client/DP_Optimizers/visualize/base_model.json', 'r') as f:
+        # Use paths relative to THIS file's location
+        with open(CURRENT_DIR / 'base_model.json', 'r') as f:
             base = json.load(f)
-        with open('client/DP_Optimizers/visualize/detailed_results.json', 'r') as f:
+        
+        with open(CURRENT_DIR / 'detailed_results.json', 'r') as f:
             detailed = json.load(f)
-        with open('client/DP_Optimizers/visualize/t_laplace_dp_results_exact_same_params.json', 'r') as f:
+        
+        with open(CURRENT_DIR / 't_laplace_dp_results_exact_same_params.json', 'r') as f:
             trad_same = json.load(f)
-        with open('client/DP_Optimizers/visualize/t_laplace_dp_results_equivalent_params.json', 'r') as f:
+        
+        with open(CURRENT_DIR / 't_laplace_dp_results_equivalent_params.json', 'r') as f:
             trad_equiv = json.load(f)
-
-        summary_df = pd.read_csv('client/DP_Optimizers/visualize/summary_results.csv')
-
+        
+        summary_df = pd.read_csv(CURRENT_DIR / 'summary_results.csv')
+        
         return base, detailed, trad_same, trad_equiv, summary_df
     except Exception as e:
         st.error(f"Error loading data: {e}")
+        st.error(f"Looking in directory: {CURRENT_DIR}")
         return None, None, None, None, None
 
 base, detailed, trad_same, trad_equiv, summary_df = load_data()
@@ -79,41 +89,54 @@ CLASS_NAMES = [
 # Main title
 st.markdown('<div class="main-header">🔒 Differential Privacy Mechanisms Comparison</div>', unsafe_allow_html=True)
 
-# Sidebar
-with st.sidebar:
-    st.markdown("## Navigation")
+# # Sidebar
+# with st.sidebar:
 
-    page = st.radio(
-        "Select Analysis:",
-        [
-            "📊 Overview & Summary",
-            "📈 Privacy-Utility Curves",
-            "⚖️ Mechanism Comparison",
-            "🔍 Traditional Laplace Analysis",
-            "📉 Per-Class Performance",
-            "🎯 Confusion Matrices",
-            "⏱️ Training Efficiency",
-            "📋 Detailed Metrics Table",
-            "❓ About This Study"
-        ]
-    )
+#     page = st.radio(
+#         "Select Analysis:",
+#         [
+#             "📊 Overview & Summary",
+#             "📈 Privacy-Utility Curves",
+#             "⚖️ Mechanism Comparison",
+#             "🔍 Traditional Laplace Analysis",
+#             "📉 Per-Class Performance",
+#             "🎯 Confusion Matrices",
+#             "⏱️ Training Efficiency",
+#             "📋 Detailed Metrics Table",
+#             "❓ About This Study"
+#         ]
+#     )
 
-    st.markdown("---")
-    st.markdown("### Experiment Details")
-    st.info("""
-    **Dataset:** ML-Edge_IIoT  
-    **Classes:** 15 attack types  
-    **Samples:** 100,986 training  
-    **Network:** 35→256→256→15  
-    **Batch Size:** 1,024  
-    **Epochs:** 20  
-    **Privacy Budget:** ε ∈ {1, 3, 5, 10}
-    """)
+#     st.markdown("---")
+#     st.markdown("### Experiment Details")
+#     st.info("""
+#     **Dataset:** ML-Edge_IIoT  
+#     **Classes:** 15 attack types  
+#     **Samples:** 100,986 training  
+#     **Network:** 35→256→256→15  
+#     **Batch Size:** 1,024  
+#     **Epochs:** 20  
+#     **Privacy Budget:** ε ∈ {1, 3, 5, 10}
+#     """)
+
+tab_list = [
+    "📊 Overview & Summary",
+    "📈 Privacy-Utility Curves",
+    "⚖️ Mechanism Comparison",
+    "🔬 Traditional Laplace Analysis",
+    "🎯 Per-Class Performance",
+    "🌀 Confusion Matrices",
+    "⏱️ Training Efficiency",
+    "📋 Detailed Metrics Table",
+    "❓ About This Study"
+]
+
+tab_overview, tab_curves, tab_mechanism, tab_laplace, tab_per_class_performance, tab_confusion, tab_efficiency, tab_metrics, tab_about = st.tabs(tab_list)
 
 # =============================================================================
 # PAGE 1: OVERVIEW & SUMMARY
 # =============================================================================
-if page == "📊 Overview & Summary":
+with tab_overview:
     st.markdown('<div class="sub-header">Executive Summary</div>', unsafe_allow_html=True)
 
     # Key findings
@@ -270,7 +293,7 @@ if page == "📊 Overview & Summary":
 # =============================================================================
 # PAGE 2: PRIVACY-UTILITY CURVES
 # =============================================================================
-elif page == "📈 Privacy-Utility Curves":
+with tab_curves:
     st.markdown('<div class="sub-header">Privacy-Utility Tradeoff Analysis</div>', unsafe_allow_html=True)
 
     st.markdown("""
@@ -350,7 +373,7 @@ elif page == "📈 Privacy-Utility Curves":
 # =============================================================================
 # PAGE 3: MECHANISM COMPARISON
 # =============================================================================
-elif page == "⚖️ Mechanism Comparison":
+with tab_mechanism:
     st.markdown('<div class="sub-header">Detailed Mechanism Comparison</div>', unsafe_allow_html=True)
 
     eps_select = st.selectbox("Select Privacy Budget (ε):", [1, 3, 5, 10], index=1, 
@@ -507,7 +530,7 @@ elif page == "⚖️ Mechanism Comparison":
 # =============================================================================
 # PAGE 4: TRADITIONAL LAPLACE ANALYSIS
 # =============================================================================
-elif page == "🔍 Traditional Laplace Analysis":
+with tab_laplace:
     st.markdown('<div class="sub-header">Why Traditional Laplace Fails</div>', unsafe_allow_html=True)
 
     st.markdown("""
@@ -620,7 +643,7 @@ elif page == "🔍 Traditional Laplace Analysis":
 # =============================================================================
 # PAGE 5: PER-CLASS PERFORMANCE
 # =============================================================================
-elif page == "📉 Per-Class Performance":
+with tab_per_class_performance:
     st.markdown('<div class="sub-header">Per-Class Accuracy Analysis</div>', unsafe_allow_html=True)
 
     eps_select = st.selectbox("Select Privacy Budget (ε):", [1, 3, 5, 10], index=1, key='class_eps')
@@ -719,7 +742,7 @@ elif page == "📉 Per-Class Performance":
 # =============================================================================
 # PAGE 6: CONFUSION MATRICES
 # =============================================================================
-elif page == "🎯 Confusion Matrices":
+with tab_confusion:
     st.markdown('<div class="sub-header">Confusion Matrix Analysis</div>', unsafe_allow_html=True)
 
     eps_select = st.selectbox("Select Privacy Budget (ε):", [1, 3, 5, 10], index=1, key='cm_eps')
@@ -803,7 +826,7 @@ elif page == "🎯 Confusion Matrices":
 # =============================================================================
 # PAGE 7: TRAINING EFFICIENCY
 # =============================================================================
-elif page == "⏱️ Training Efficiency":
+with tab_efficiency:
     st.markdown('<div class="sub-header">Training Time & Efficiency Analysis</div>', unsafe_allow_html=True)
 
     # Extract training times
@@ -914,7 +937,7 @@ elif page == "⏱️ Training Efficiency":
 # =============================================================================
 # PAGE 8: DETAILED METRICS TABLE
 # =============================================================================
-elif page == "📋 Detailed Metrics Table":
+with tab_metrics:
     st.markdown('<div class="sub-header">Complete Metrics Overview</div>', unsafe_allow_html=True)
 
     eps_select = st.selectbox("Select Privacy Budget (ε):", [1, 3, 5, 10], index=1, key='table_eps')
@@ -1009,9 +1032,9 @@ elif page == "📋 Detailed Metrics Table":
     agg_df = pd.DataFrame(agg_data)
     st.dataframe(agg_df, width='stretch')
 
-elif page == "❓ About This Study":
+with tab_about:
     # Read the markdown file
-    with open("client/DP_Optimizers/visualize/Differential_Privacy_in_Deep_Learning.md", "r", encoding="utf-8") as f:
+    with open(CURRENT_DIR / 'Differential_Privacy_in_Deep_Learning.md', 'r', encoding="utf-8") as f:
         md_content = f.read()
 
     # Display it with st.markdown
